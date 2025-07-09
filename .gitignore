@@ -1,0 +1,60 @@
+#----------------------------------------
+# Build results
+#----------------------------------------
+[Bb]in/
+[Oo]bj/
+*.exe
+*.dll
+*.lib
+*.pdb
+*.ipch
+*.iobj
+*.ipdb
+*.ilk
+*.log
+*.sdf
+*.opensdf
+*.cache
+*.db
+
+# Visual Studio folders
+.vs/
+*.VC.db
+*.VC.VC.opendb
+
+# User-specific files
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+# Backup and temporary files
+*.tmp
+*.bak
+*.swp
+*~ 
+
+# OneDrive sync files (optional)
+~$*
+
+# CMake intermediate files (if using CMake)
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+Makefile
+build/
+
+# Third-party libraries not to be checked in
+packages/
+
+# Ignore compiled resource files
+*.res
+
+# Ignore crash dumps
+*.dmp
+
+# Ignore logs
+*.log
+
+# Ignore Editor config folders
+.idea/
