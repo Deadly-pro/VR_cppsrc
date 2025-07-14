@@ -35,17 +35,14 @@ public:
     VRHand leftHand;
     VRHand rightHand;
     void SetYawPitchRoll(float yaw, float pitch, float roll);
-    void HandleMouseLook(Vector2 delta);
     void SetPanelInfo(const Vector3& pos, const Vector3& size);
     void Update();
 	void UpdateVRHand(VRHand& hand, const HandTrackingData& handData);
     Camera3D GetLeftEyeCamera(float eyeSeparation);
     Camera3D GetRightEyeCamera(float eyeSeparation);
 	void DrawVRHand(const VRHand& hand);
-    bool GetVRMouseData(Vector2& uv, bool& leftClick, bool& rightClick, bool& isDragging);
     Vector3 ComputeHandAnchorPosition(const std::string& handedness);
     void DrawHands(const std::vector<HandTrackingData>& hands);
-    void DrawLaserPointer();
 
 private:
     Camera3D camera;

@@ -82,7 +82,7 @@ public:
         // Add these for better rate control:
         av_opt_set(ctx->priv_data, "crf", "23", 0);  // Constant rate factor
         av_opt_set(ctx->priv_data, "rc-lookahead", "0", 0);  // No lookahead for real-time
-        av_opt_set(ctx->priv_data, "preset", "ultrafast", 0);
+        av_opt_set(ctx->priv_data, "preset", "veryfast", 0);
         av_opt_set(ctx->priv_data, "tune", "zerolatency", 0);
         av_opt_set(ctx->priv_data, "profile", "baseline", 0);
 

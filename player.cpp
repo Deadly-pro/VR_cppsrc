@@ -39,11 +39,6 @@ void Player::SetYawPitchRoll(float yaw, float pitch, float roll) {
     rotation = { smoothPitch,smoothYaw, smoothRoll };
 }
 
-void Player::HandleMouseLook(Vector2 delta) {
-    rotation.y += delta.x * 0.003f;
-    rotation.x += delta.y * 0.003f;
-}
-
 void Player::SetPanelInfo(const Vector3& pos, const Vector3& size) {
     panelPos = pos;
     panelSize = size;
@@ -153,14 +148,6 @@ Camera3D Player::GetRightEyeCamera(float eyeSeparation) {
     rightCam.target = Vector3Add(camera.target, Vector3Scale(right, eyeSeparation / 2.0f));
     return rightCam;
 }
-
-bool Player::GetVRMouseData(Vector2& uv, bool& leftClick, bool& rightClick, bool& isDragging) {
-    uv = laserUV;
-    leftClick = IsMouseButtonPressed(MOUSE_LEFT_BUTTON);   // Placeholder for gesture
-    rightClick = IsMouseButtonPressed(MOUSE_RIGHT_BUTTON); // Placeholder
-    isDragging = IsMouseButtonDown(MOUSE_LEFT_BUTTON);     // Placeholder
-    return laserIntersecting;
-}
 void Player::DrawVRHand(const VRHand& hand) {
     if (!hand.is_tracked) return;
 
@@ -207,31 +194,4 @@ void Player::DrawHands(const std::vector<HandTrackingData>& hands) {
     // Draw both hands
     DrawVRHand(leftHand);
     DrawVRHand(rightHand);
-}
-
-void Player::DrawLaserPointer() {
-    Vector3 dir = Vector3Normalize(Vector3Subtract(camera.target, camera.position));
-    Ray ray = { camera.position, dir };
-
-    Vector3 hit = { 0 };
-    laserIntersecting = false;
-
-    // Simple plane intersection (Z plane)
-    float t = (panelPos.z - ray.position.z) / ray.direction.z;
-    if (t > 0 && t < 100.0f) {
-        hit = Vector3Add(ray.position, Vector3Scale(ray.direction, t));
-
-        Vector3 rel = Vector3Subtract(hit, panelPos);
-        if (fabs(rel.x) <= panelSize.x / 2 && fabs(rel.y) <= panelSize.y / 2) {
-            laserUV = {
-                (rel.x + panelSize.x / 2) / panelSize.x,
-                1.0f - (rel.y + panelSize.y / 2) / panelSize.y
-            };
-            laserIntersecting = true;
-            DrawSphere(hit, 0.015f, YELLOW);
-        }
-    }
-
-    Vector3 laserEnd = Vector3Add(ray.position, Vector3Scale(ray.direction, 100.0f));
-    DrawLine3D(ray.position, laserEnd, RED);
 }

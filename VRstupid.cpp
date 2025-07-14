@@ -1,6 +1,5 @@
 ﻿#include "vr_desktop_render.h"
 #include "rlgl.h"
-// NO windows.h include here!
 
 VRDesktopRenderer::VRDesktopRenderer()
     : textureInitialized(false), maxUpdateRate(1.0f / 60.0f) {
