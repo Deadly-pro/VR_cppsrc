@@ -43,6 +43,10 @@ CMakeCache.txt
 cmake_install.cmake
 Makefile
 build/
+x64/
+
+# Ignore the project include files, let the user set them up by himself and feel the same pain
+*vcxproj
 
 # Third-party libraries not to be checked in
 packages/
