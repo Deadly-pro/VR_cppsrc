@@ -12,24 +12,25 @@ struct CapturedFrame {
     int height;
     int channels;
     bool isValid;
+	int screenIndex; 
     std::chrono::steady_clock::time_point timestamp;
-
-    CapturedFrame() : width(0), height(0), channels(0), isValid(false) {}
+    CapturedFrame() : width(0), height(0), channels(0), isValid(false) , screenIndex(0) {}
 };
 
 class ScreenCapture {
 private:
-    static std::unique_ptr<std::thread> captureThread;
+    static std::vector<std::unique_ptr<std::thread>> captureThreads;
     static std::atomic<bool> shouldStop;
     static std::atomic<bool> isRunning;
     static ThreadSafeQueue<CapturedFrame> frameQueue;
     static std::atomic<float> captureRate;
 
-    static void captureThreadFunction();
-    static CapturedFrame captureDesktopInternal();
+    static void captureThreadFunction(size_t monitorIndex);
+    static CapturedFrame captureDesktopInternal(int screenindex);
 
 public:
     static bool initialize();
+	static int getScreenCount();
     static void cleanup();
     static std::optional<CapturedFrame> getLatestFrame();
     static void setCaptureRate(float fps);

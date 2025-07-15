@@ -1,128 +1,124 @@
 ﻿#include "vr_desktop_render.h"
 #include "rlgl.h"
+#include "player.h"
+#include <raymath.h>
 
 VRDesktopRenderer::VRDesktopRenderer()
-    : textureInitialized(false), maxUpdateRate(1.0f / 60.0f) {
-    lastUpdate = std::chrono::steady_clock::now();
+    : texturesInitialized(false),
+    maxUpdateRate(30.0f),
+    panelDistance(2.0f),
+    panelSpacing(0.5f),
+    panelWidth(1.2f),
+    panelHeight(0.7f)
+{
 }
 
-VRDesktopRenderer::~VRDesktopRenderer() {
+VRDesktopRenderer::~VRDesktopRenderer()
+{
     cleanup();
 }
 
-void VRDesktopRenderer::initialize() {
-    bool success = ScreenCapture::initialize();
-    if (!success) {
-        return;
+void VRDesktopRenderer::initialize(Player& player)
+{
+    camera = player.GetLeftEyeCamera(0.065f);
+    size_t screenCount = ScreenCapture::getScreenCount();
+    desktopTextures.resize(screenCount);
+
+    for (size_t i = 0; i < screenCount; ++i) {
+        Image img = GenImageColor(1280, 720, DARKGRAY); // Placeholder texture
+        desktopTextures[i] = LoadTextureFromImage(img);
+        UnloadImage(img);
     }
 
-    ScreenCapture::setCaptureRate(60.0f);
-    textureInitialized = false;
     lastUpdate = std::chrono::steady_clock::now();
+    texturesInitialized = true;
 }
 
-void VRDesktopRenderer::cleanup() {
-    if (textureInitialized) {
-        UnloadTexture(desktopTexture);
-        textureInitialized = false;
-    }
-    ScreenCapture::cleanup();
-}
-
-void VRDesktopRenderer::update() {
-    auto now = std::chrono::steady_clock::now();
-    auto elapsed = std::chrono::duration<float>(now - lastUpdate).count();
-
-    if (elapsed < maxUpdateRate) {
-        return;
-    }
-
-    auto frameOpt = ScreenCapture::getLatestFrame();
-    if (frameOpt.has_value()) {
-        const auto& frame = frameOpt.value();
-
-        if (frame.isValid && !frame.pixels.empty()) {
-            Image desktopImage = {
-                .data = const_cast<void*>(static_cast<const void*>(frame.pixels.data())),
-                .width = frame.width,
-                .height = frame.height,
-                .mipmaps = 1,
-                .format = PIXELFORMAT_UNCOMPRESSED_R8G8B8A8
-            };
-
-            if (textureInitialized) {
-                UpdateTexture(desktopTexture, desktopImage.data);
-            }
-            else {
-                desktopTexture = LoadTextureFromImage(desktopImage);
-                textureInitialized = true;
-            }
-
-            lastUpdate = now;
+void VRDesktopRenderer::cleanup()
+{
+    for (auto& tex : desktopTextures) {
+        if (tex.id > 0) {
+            UnloadTexture(tex);
         }
     }
+    desktopTextures.clear();
+    texturesInitialized = false;
 }
 
-void VRDesktopRenderer::renderDesktopPanel(Vector3 panelPosition, Vector3 panelSize) {
-    if (!textureInitialized) {
-        DrawCube(panelPosition, panelSize.x, panelSize.y, 0.1f, GRAY);
-        DrawCubeWires(panelPosition, panelSize.x, panelSize.y, 0.1f, RED);
+void VRDesktopRenderer::update()
+{
+    if (!texturesInitialized) return;
+
+    auto now = std::chrono::steady_clock::now();
+    float elapsed = std::chrono::duration<float>(now - lastUpdate).count();
+
+    if (elapsed < (1.0f / maxUpdateRate)) {
         return;
     }
 
-    Vector3 corners[4] = {
-        {panelPosition.x - panelSize.x / 2, panelPosition.y + panelSize.y / 2, panelPosition.z},
-        {panelPosition.x + panelSize.x / 2, panelPosition.y + panelSize.y / 2, panelPosition.z},
-        {panelPosition.x + panelSize.x / 2, panelPosition.y - panelSize.y / 2, panelPosition.z},
-        {panelPosition.x - panelSize.x / 2, panelPosition.y - panelSize.y / 2, panelPosition.z}
-    };
+    lastUpdate = now;
 
-    rlSetTexture(desktopTexture.id);
-    rlBegin(RL_QUADS);
-    rlColor4ub(255, 255, 255, 255);
+    // Process all captured frames
+    std::optional<CapturedFrame> frameOpt;
+    while ((frameOpt = ScreenCapture::getLatestFrame())) {
+        CapturedFrame frame = *frameOpt;
 
-    rlTexCoord2f(1.0f, 0.0f); rlVertex3f(corners[0].x, corners[0].y, corners[0].z);
-    rlTexCoord2f(0.0f, 0.0f); rlVertex3f(corners[1].x, corners[1].y, corners[1].z);
-    rlTexCoord2f(0.0f, 1.0f); rlVertex3f(corners[2].x, corners[2].y, corners[2].z);
-    rlTexCoord2f(1.0f, 1.0f); rlVertex3f(corners[3].x, corners[3].y, corners[3].z);
+        if (!frame.isValid || frame.screenIndex >= desktopTextures.size()) {
+            continue;
+        }
 
-    rlEnd();
-    rlSetTexture(0);
+        Image img = {
+            .data = frame.pixels.data(),
+            .width = frame.width,
+            .height = frame.height,
+            .mipmaps = 1,
+            .format = PIXELFORMAT_UNCOMPRESSED_R8G8B8A8
+        };
+
+        // Update existing texture
+        UpdateTexture(desktopTextures[frame.screenIndex], img.data);
+    }
 }
 
-void VRDesktopRenderer::setMaxUpdateRate(float fps) {
-    maxUpdateRate = 1.0f / fps;
+void VRDesktopRenderer::renderDesktopPanels(const Player& player)
+{
+    if (!texturesInitialized) return;
+
+    Vector3 playerPos = player.GetPosition();
+    Vector3 playerForward = player.GetForward();
+    Vector3 right = Vector3Normalize(Vector3CrossProduct(playerForward, { 0, 1, 0 }));
+
+    size_t numPanels = desktopTextures.size();
+    float totalWidth = (numPanels * panelWidth) + ((numPanels - 1) * panelSpacing);
+    Vector3 centerOffset = Vector3Scale(right, -totalWidth / 2.0f + panelWidth / 2.0f);
+
+    for (size_t i = 0; i < numPanels; ++i) {
+        Vector3 offset = Vector3Add(centerOffset, Vector3Scale(right, i * (panelWidth + panelSpacing)));
+        /*Vector3 panelPos = Vector3Add(playerPos, Vector3Add(Vector3Scale(playerForward, panelDistance), offset));*/
+        Vector3 panelPos = Vector3{1.0f,2.0f,0.0f};
+        Vector2 panelSize = { panelWidth, panelHeight}; 
+        DrawBillboardRec(
+			camera,
+            desktopTextures[i],
+            { 0, 0, (float)desktopTextures[i].width, (float)desktopTextures[i].height },
+            panelPos,
+            panelSize,
+            WHITE
+        );
+    }
 }
 
-bool VRDesktopRenderer::isTextureReady() const {
-    return textureInitialized;
+void VRDesktopRenderer::setMaxUpdateRate(float fps)
+{
+    maxUpdateRate = fps;
 }
 
-size_t VRDesktopRenderer::getQueueSize() const {
+bool VRDesktopRenderer::isTextureReady() const
+{
+    return texturesInitialized && !desktopTextures.empty();
+}
+
+size_t VRDesktopRenderer::getQueueSize() const
+{
     return ScreenCapture::getQueueSize();
-}
-
-// VR Mouse interaction implementations - call our wrapper functions
-void VRDesktopRenderer::sendLeftClick(int x, int y) {
-    SendVRLeftClick(x, y);
-}
-
-void VRDesktopRenderer::sendRightClick(int x, int y) {
-    SendVRRightClick(x, y);
-}
-
-void VRDesktopRenderer::sendMouseMove(int x, int y) {
-    SendVRMouseMove(x, y);
-}
-
-void VRDesktopRenderer::sendMousePosition(int x, int y) {
-    SendVRMousePosition(x, y);
-}
-
-void VRDesktopRenderer::sendMouseDown(int x, int y) {
-    SendVRMouseDown(x, y);
-}
-
-void VRDesktopRenderer::sendMouseUp(int x, int y) {
-    SendVRMouseUp(x, y);
 }
