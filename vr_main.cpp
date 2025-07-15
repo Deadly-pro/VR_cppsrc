@@ -192,7 +192,6 @@ int main(void) {
     SetTraceLogLevel(LOG_NONE);
     SetConfigFlags(FLAG_MSAA_4X_HINT | FLAG_WINDOW_HIGHDPI | FLAG_WINDOW_HIDDEN);
     InitWindow(screenWidth, screenHeight, "VR Hand Viewer");
-
     // Redirect stderr to null and setup stdout for binary data
     FILE* nullout = nullptr;
     freopen_s(&nullout, "NUL", "w", stderr);
@@ -201,7 +200,7 @@ int main(void) {
 
     RenderTexture2D target = LoadRenderTexture(screenWidth, screenHeight);
     VRDesktopRenderer desktopRenderer;
-
+    ScreenCapture::initialize();
     Player player;
     desktopRenderer.initialize(player);
     desktopRenderer.setMaxUpdateRate(60.0f);
@@ -215,32 +214,24 @@ int main(void) {
     fs::path exePath = fs::absolute(fs::path(__argv[0]));
     fs::path sharedDir = exePath.parent_path().parent_path().parent_path().parent_path() / "Shared";
     std::string handFilePath = (sharedDir / "hands.dat").string();
-    std::string gyroFilePath = (sharedDir / "gyro.dat").string();
-
-    debugLog << "[INFO] Hand file path: " << handFilePath << std::endl;
-    debugLog << "[INFO] Gyro file path: " << gyroFilePath << std::endl;
-
+    
     std::unique_ptr<H264Encoder> encoder;
     auto lastFrameTime = std::chrono::high_resolution_clock::now();
     const auto targetFrameTime = std::chrono::microseconds(1000000 / 300); // 300 FPS
 
     while (!WindowShouldClose()) {
         auto currentTime = std::chrono::high_resolution_clock::now();
-
-        debugLog << "[DEBUG] Start of if \n";
         auto gyroOpt = gyroQueue.tryPop();
-		debugLog << "[DEBUG] gyroOpt: " << (gyroOpt.has_value() ? "true" : "false") << "\n";
-        if((gyroOpt.has_value()?true:false)) {
+		if((gyroOpt.has_value()?true:false)) {
         latestGyro = gyroOpt.value();
-        debugLog << "[DEBUG] Entered \n";
-		//for debugging purposes
-                if (latestGyro.yaw != 0.0f || latestGyro.pitch != 0.0f || latestGyro.roll != 0.0f) {  
-                    debugLog << "[DEBUG]latestGyro values not 0 \n";
-                    debugLog << "[INFO] Gyro data received: Yaw=" << latestGyro.yaw << ", Pitch=" << latestGyro.pitch << ", Roll=" << latestGyro.roll << std::endl;  
-                } else {  
-                    debugLog << "[INFO] No new gyro data available, using last known values." << std::endl;  
-                }
-            
+        //for debugging purposes
+        //        if (latestGyro.yaw != 0.0f || latestGyro.pitch != 0.0f || latestGyro.roll != 0.0f) {  
+        //            debugLog << "[DEBUG]latestGyro values not 0 \n";
+        //            debugLog << "[INFO] Gyro data received: Yaw=" << latestGyro.yaw << ", Pitch=" << latestGyro.pitch << ", Roll=" << latestGyro.roll << std::endl;  
+        //        } else {  
+        //            debugLog << "[INFO] No new gyro data available, using last known values." << std::endl;  
+        //        }
+        //    
         player.SetYawPitchRoll(latestGyro.yaw, latestGyro.pitch, latestGyro.roll);
         }
 
@@ -261,7 +252,7 @@ int main(void) {
         BeginMode3D(player.GetLeftEyeCamera(eyeSeparation));
         DrawGrid(20, 1.0f);
         DrawCube(Vector3{ 0, 1.5f, 4 }, 1, 1, 1, BLUE);
-        desktopRenderer.renderDesktopPanels(player);
+        desktopRenderer.renderDesktopPanels(player, player.GetLeftEyeCamera(eyeSeparation));
         player.DrawHands(handData);
         EndMode3D();
 
@@ -269,14 +260,15 @@ int main(void) {
         rlViewport((screenWidth / 2) + (int)gap, 0, screenWidth / 2, screenHeight);
         BeginMode3D(player.GetRightEyeCamera(eyeSeparation));
         DrawGrid(20, 1.0f);
-        desktopRenderer.renderDesktopPanels(player);
+        desktopRenderer.renderDesktopPanels(player,player.GetRightEyeCamera(eyeSeparation));
         player.DrawHands(handData);
         EndMode3D();
 
         rlViewport(0, 0, screenWidth, screenHeight);
         EndTextureMode();
-
         BeginDrawing();
+        ClearBackground(BLACK);
+        DrawTexture(target.texture, 0, 0, WHITE);
         EndDrawing();
 
         // Frame Rate Control

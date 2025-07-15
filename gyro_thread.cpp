@@ -32,16 +32,12 @@ void GyroStdinReaderThread(ThreadSafeQueue<GyroData>& queue) {
                     float alpha = j.value("alpha", 0.0f);
                     float beta = j.value("beta", 0.0f);
                     float gamma = j.value("gamma", 0.0f);
-
+					if (beta > 0)beta = -180 + beta; 
                     GyroData data;
                     data.yaw = DEGRAD * alpha;
-                    data.pitch = DEGRAD * gamma;
-                    data.roll = DEGRAD * beta;
-
-                    log << "[INFO] Parsed Gyro: alpha=" << alpha
-                        << ", beta=" << beta
-                        << ", gamma=" << gamma << std::endl;
-
+                    data.pitch = DEGRAD * beta;
+                    data.roll = DEGRAD * gamma;
+                    
                     queue.push(std::move(data));
                 }
                 catch (const std::exception& e) {
@@ -49,7 +45,6 @@ void GyroStdinReaderThread(ThreadSafeQueue<GyroData>& queue) {
                 }
             }
             else {
-                log << "[INFO] EOF reached in Gyro thread. Exiting.\n";
                 break;
             }
         }

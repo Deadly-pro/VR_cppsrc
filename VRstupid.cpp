@@ -2,7 +2,7 @@
 #include "rlgl.h"
 #include "player.h"
 #include <raymath.h>
-
+#include <fstream>
 VRDesktopRenderer::VRDesktopRenderer()
     : texturesInitialized(false),
     maxUpdateRate(30.0f),
@@ -20,12 +20,11 @@ VRDesktopRenderer::~VRDesktopRenderer()
 
 void VRDesktopRenderer::initialize(Player& player)
 {
-    camera = player.GetLeftEyeCamera(0.065f);
     size_t screenCount = ScreenCapture::getScreenCount();
     desktopTextures.resize(screenCount);
 
     for (size_t i = 0; i < screenCount; ++i) {
-        Image img = GenImageColor(1280, 720, DARKGRAY); // Placeholder texture
+        Image img = GenImageColor(1920, 1080, WHITE); // Placeholder texture
         desktopTextures[i] = LoadTextureFromImage(img);
         UnloadImage(img);
     }
@@ -79,32 +78,47 @@ void VRDesktopRenderer::update()
         UpdateTexture(desktopTextures[frame.screenIndex], img.data);
     }
 }
-
-void VRDesktopRenderer::renderDesktopPanels(const Player& player)
+void VRDesktopRenderer::renderDesktopPanels(Player& player, Camera3D camera)
 {
     if (!texturesInitialized) return;
 
-    Vector3 playerPos = player.GetPosition();
-    Vector3 playerForward = player.GetForward();
-    Vector3 right = Vector3Normalize(Vector3CrossProduct(playerForward, { 0, 1, 0 }));
+    // === Configurable ===
+    float panelHeightOffset = -1.0f;      // Panels sit at eye-level + offset
+    float panelForwardDistance = 1.0f;   // Distance from player
+    float panelSpacingFactor = 0.25f;    // Gap between panels (m)
+
+    // === Player Positioning ===
+    Vector3 playerPos = player.GetPosition();      // World origin of player
+    Vector3 playerFwd = Vector3Normalize(player.GetForward());  // Where player looks
+    Vector3 right = Vector3Normalize(Vector3CrossProduct(playerFwd, { 0, 1, 0 }));
+
+    // === Position Panels in Front of Player ===
+    Vector3 baseForward = Vector3Scale(playerFwd, panelForwardDistance);
+    Vector3 basePos = Vector3Add(playerPos, baseForward);
+    basePos.y += panelHeightOffset;
 
     size_t numPanels = desktopTextures.size();
-    float totalWidth = (numPanels * panelWidth) + ((numPanels - 1) * panelSpacing);
-    Vector3 centerOffset = Vector3Scale(right, -totalWidth / 2.0f + panelWidth / 2.0f);
+    float totalWidth = numPanels * panelWidth + (numPanels - 1) * panelSpacingFactor;
+    Vector3 leftOffset = Vector3Scale(right, -totalWidth / 2.0f + panelWidth / 2.0f);
 
     for (size_t i = 0; i < numPanels; ++i) {
-        Vector3 offset = Vector3Add(centerOffset, Vector3Scale(right, i * (panelWidth + panelSpacing)));
-        /*Vector3 panelPos = Vector3Add(playerPos, Vector3Add(Vector3Scale(playerForward, panelDistance), offset));*/
-        Vector3 panelPos = Vector3{1.0f,2.0f,0.0f};
-        Vector2 panelSize = { panelWidth, panelHeight}; 
+        Vector3 offset = Vector3Scale(right, i * (panelWidth + panelSpacingFactor));
+        Vector3 panelPos = Vector3Add(basePos, Vector3Add(leftOffset, offset));
+
+        float texAspect = (float)desktopTextures[i].height / desktopTextures[i].width;
+        Vector2 size = { panelWidth, panelWidth * texAspect };
+        //panel 
         DrawBillboardRec(
-			camera,
+            camera,
             desktopTextures[i],
             { 0, 0, (float)desktopTextures[i].width, (float)desktopTextures[i].height },
             panelPos,
-            panelSize,
+            size,
             WHITE
         );
+
+        // Debug cube to verify location
+        // DrawCube(panelPos, 0.05f, 0.05f, 0.05f, RED);
     }
 }
 

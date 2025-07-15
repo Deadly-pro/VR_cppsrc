@@ -26,8 +26,7 @@ private:
     static std::atomic<float> captureRate;
 
     static void captureThreadFunction(size_t monitorIndex);
-    static CapturedFrame captureDesktopInternal(int screenindex);
-
+    
 public:
     static bool initialize();
 	static int getScreenCount();

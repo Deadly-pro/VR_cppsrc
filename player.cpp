@@ -34,7 +34,7 @@ Vector3 Player::GetForward() const {
 void Player::SetYawPitchRoll(float yaw, float pitch, float roll) {
 	pitch = -pitch; 
     yaw = -yaw;
-    pitch -= DEGTORAD * (90.f);
+    pitch -= DEGTORAD * (90.f);//offSet random shit 
     while (yaw > 2.0f * PI) yaw -= 2.0f * PI;
     while (yaw < 0.0f) yaw += 2.0f * PI;
     if (yaw > PI) yaw -= 2.0f * PI;

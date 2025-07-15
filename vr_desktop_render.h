@@ -18,7 +18,6 @@ private:
     float panelSpacing;
     float panelWidth;
     float panelHeight;
-	Camera3D camera;
 
 public:
     VRDesktopRenderer();
@@ -27,7 +26,7 @@ public:
     void initialize(Player& player);
     void cleanup();
     void update();
-    void renderDesktopPanels(const Player& player);
+    void renderDesktopPanels(Player& player,Camera3D camera );
     void setMaxUpdateRate(float fps);
     bool isTextureReady() const;
     size_t getQueueSize() const;
