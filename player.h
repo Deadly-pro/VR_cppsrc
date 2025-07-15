@@ -1,10 +1,7 @@
 #pragma once
-
 #include "raylib.h"
 #include <vector>
 #include <string>
-// Define these simple structures if not declared already:
-
 struct VRLandmark {
     Vector3 position;
     bool active;
@@ -23,11 +20,7 @@ struct VRHand {
 struct HandTrackingData {
     std::string handedness;
     std::vector<Vector3> landmarks;
-    float confidence;
-    float depth_scale;
-    float distance_factor;
-    bool shoulder_calibrated;
-};
+    };
 
 class Player {
 public:

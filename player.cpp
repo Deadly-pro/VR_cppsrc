@@ -1,7 +1,16 @@
 ﻿#include "player.h"
 #include "raymath.h"
+#include "thread_safe_queue.h"
 #include <cmath>
+#include "hand_reader.h"
 #define DEGTORAD (PI / 180.0f)
+ThreadSafeQueue<std::vector<HandTrackingData>> handQueue;
+
+void StartHandTracking()
+{
+    std::thread t(HandTrackingReaderThread, std::ref(handQueue));
+    t.detach();
+}
 
 
 Player::Player() {
@@ -14,12 +23,14 @@ Player::Player() {
 
     laserUV = { 0 };
     laserIntersecting = false;
-
+    //starting mediapipe
+    //StartHandTracking();
     // initialize VR hands
     leftHand.is_tracked = false;
     rightHand.is_tracked = false;
     leftHand.landmarks.resize(21);
     rightHand.landmarks.resize(21);
+   
 }
 Vector3 Player::GetPosition() const {
     return position;

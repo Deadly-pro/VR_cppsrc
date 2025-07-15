@@ -24,7 +24,7 @@ void VRDesktopRenderer::initialize(Player& player)
     desktopTextures.resize(screenCount);
 
     for (size_t i = 0; i < screenCount; ++i) {
-        Image img = GenImageColor(1920, 1080, WHITE); // Placeholder texture
+        Image img = GenImageColor(1920, 1080, WHITE); // Placeholder texture to preload stuff assuming its 1080p
         desktopTextures[i] = LoadTextureFromImage(img);
         UnloadImage(img);
     }

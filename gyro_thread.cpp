@@ -32,7 +32,7 @@ void GyroStdinReaderThread(ThreadSafeQueue<GyroData>& queue) {
                     float alpha = j.value("alpha", 0.0f);
                     float beta = j.value("beta", 0.0f);
                     float gamma = j.value("gamma", 0.0f);
-					if (beta > 0)beta = -180 + beta; 
+					if (beta > 0)beta = -180 + beta; //weird gyro logic that needed fix 
                     GyroData data;
                     data.yaw = DEGRAD * alpha;
                     data.pitch = DEGRAD * beta;

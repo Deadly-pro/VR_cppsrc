@@ -45,7 +45,8 @@ Makefile
 build/
 x64/
 
-# Ignore the project include files, let the user set them up by himself and feel the same pain
+# Ignore the project include files, let the user set them up by himself and feel the same pain 
+# sure buddy enjoy yourself 
 *.vcxproj
 *.sln
 

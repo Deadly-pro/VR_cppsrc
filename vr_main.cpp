@@ -48,11 +48,10 @@ struct FrameHeader {
     uint32_t pixel_format;  // 0=RGBA, 1=RGB, 2=H264
 }; 
 
-std::vector<HandTrackingData> ReadHandTrackingData(const std::string& filename);
+//std::vector<HandTrackingData> ReadHandTrackingData(const std::string& filename);
 bool isStdoutPiped();
 uint32_t GetCurrentTimeMs();
 bool SendH264Frame(const std::vector<uint8_t>& frameData, int width, int height);
-
 // -------- H264 Encoder Class --------
 class H264Encoder {
 public:
@@ -202,6 +201,7 @@ int main(void) {
     VRDesktopRenderer desktopRenderer;
     ScreenCapture::initialize();
     Player player;
+    
     desktopRenderer.initialize(player);
     desktopRenderer.setMaxUpdateRate(60.0f);
 
@@ -218,8 +218,7 @@ int main(void) {
     std::unique_ptr<H264Encoder> encoder;
     auto lastFrameTime = std::chrono::high_resolution_clock::now();
     const auto targetFrameTime = std::chrono::microseconds(1000000 / 300); // 300 FPS
-
-    while (!WindowShouldClose()) {
+	while (!WindowShouldClose()) {
         auto currentTime = std::chrono::high_resolution_clock::now();
         auto gyroOpt = gyroQueue.tryPop();
 		if((gyroOpt.has_value()?true:false)) {
@@ -235,9 +234,7 @@ int main(void) {
         player.SetYawPitchRoll(latestGyro.yaw, latestGyro.pitch, latestGyro.roll);
         }
 
-        auto handData = ReadHandTrackingData(handFilePath);
-
-
+        
         player.Update();
         desktopRenderer.update();
         player.SetPanelInfo(panelPosition, panelSize);
@@ -253,7 +250,6 @@ int main(void) {
         DrawGrid(20, 1.0f);
         DrawCube(Vector3{ 0, 1.5f, 4 }, 1, 1, 1, BLUE);
         desktopRenderer.renderDesktopPanels(player, player.GetLeftEyeCamera(eyeSeparation));
-        player.DrawHands(handData);
         EndMode3D();
 
         // Right eye
@@ -261,7 +257,6 @@ int main(void) {
         BeginMode3D(player.GetRightEyeCamera(eyeSeparation));
         DrawGrid(20, 1.0f);
         desktopRenderer.renderDesktopPanels(player,player.GetRightEyeCamera(eyeSeparation));
-        player.DrawHands(handData);
         EndMode3D();
 
         rlViewport(0, 0, screenWidth, screenHeight);
@@ -400,11 +395,7 @@ std::vector<HandTrackingData> ReadHandTrackingData(const std::string& filename) 
         for (const auto& hand : parsed) {
             HandTrackingData tracked;
             tracked.handedness = hand.value("handedness", "");
-            tracked.distance_factor = hand.value("distance_factor", 1.0f);
-            tracked.depth_scale = hand.value("depth_scale", 1.0f);
-            tracked.shoulder_calibrated = hand.value("shoulder_calibrated", false);
-            tracked.confidence = hand.value("confidence", 0.7f);
-
+           
             if (hand.contains("landmarks")) {
                 for (const auto& lm : hand["landmarks"]) {
                     Vector3 pt = {
