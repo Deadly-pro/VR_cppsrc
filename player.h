@@ -43,10 +43,12 @@ public:
 	void DrawVRHand(const VRHand& hand);
     Vector3 ComputeHandAnchorPosition(const std::string& handedness);
     void DrawHands(const std::vector<HandTrackingData>& hands);
-
+    Vector3 GetPosition() const;
+    Vector3 GetForward() const;
+    
 private:
-    Camera3D camera;
     Vector3 position;
+    Camera3D camera;
     Vector3 rotation;  // yaw, pitch, roll
 	float yaw, pitch, roll;
     Vector3 panelPos;

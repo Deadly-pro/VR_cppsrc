@@ -21,6 +21,15 @@ Player::Player() {
     leftHand.landmarks.resize(21);
     rightHand.landmarks.resize(21);
 }
+Vector3 Player::GetPosition() const {
+    return position;
+}
+
+Vector3 Player::GetForward() const {
+    float radYaw = DEG2RAD * yaw;
+    float radPitch = DEG2RAD * pitch;
+    return Vector3{ cos(radPitch) * sin(radYaw),sin(radPitch),cos(radPitch) * cos(radYaw) };
+}
 
 void Player::SetYawPitchRoll(float yaw, float pitch, float roll) {
 	pitch = -pitch; 

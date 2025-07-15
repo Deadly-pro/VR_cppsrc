@@ -201,10 +201,11 @@ int main(void) {
 
     RenderTexture2D target = LoadRenderTexture(screenWidth, screenHeight);
     VRDesktopRenderer desktopRenderer;
-    desktopRenderer.initialize();
-    desktopRenderer.setMaxUpdateRate(60.0f);
 
     Player player;
+    desktopRenderer.initialize(player);
+    desktopRenderer.setMaxUpdateRate(60.0f);
+
     const float eyeSeparation = 0.065f;
     Vector2 lastMousePos = { 0 };
     bool firstMouse = true;
@@ -226,14 +227,6 @@ int main(void) {
     while (!WindowShouldClose()) {
         auto currentTime = std::chrono::high_resolution_clock::now();
 
-        Vector2 mousePos = GetMousePosition();
-        if (firstMouse) {
-            lastMousePos = mousePos;
-            firstMouse = false;
-        }
-        Vector2 delta = { mousePos.x - lastMousePos.x, mousePos.y - lastMousePos.y };
-        lastMousePos = mousePos;
-        player.HandleMouseLook(delta);
         debugLog << "[DEBUG] Start of if \n";
         auto gyroOpt = gyroQueue.tryPop();
 		debugLog << "[DEBUG] gyroOpt: " << (gyroOpt.has_value() ? "true" : "false") << "\n";
@@ -267,18 +260,17 @@ int main(void) {
         rlViewport(0, 0, screenWidth / 2, screenHeight);
         BeginMode3D(player.GetLeftEyeCamera(eyeSeparation));
         DrawGrid(20, 1.0f);
-        desktopRenderer.renderDesktopPanel(panelPosition, panelSize);
+        DrawCube(Vector3{ 0, 1.5f, 4 }, 1, 1, 1, BLUE);
+        desktopRenderer.renderDesktopPanels(player);
         player.DrawHands(handData);
-        player.DrawLaserPointer();
         EndMode3D();
 
         // Right eye
         rlViewport((screenWidth / 2) + (int)gap, 0, screenWidth / 2, screenHeight);
         BeginMode3D(player.GetRightEyeCamera(eyeSeparation));
         DrawGrid(20, 1.0f);
-        desktopRenderer.renderDesktopPanel(panelPosition, panelSize);
+        desktopRenderer.renderDesktopPanels(player);
         player.DrawHands(handData);
-        player.DrawLaserPointer();
         EndMode3D();
 
         rlViewport(0, 0, screenWidth, screenHeight);
