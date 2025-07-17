@@ -26,19 +26,21 @@ extern "C" {
 }
 
 namespace fs = std::filesystem;
-ThreadSafeQueue<GyroData> gyroQueue;
-GyroData latestGyro = { 0.0f, 0.0f, 0.0f };
+struct RawFrame {
+    std::vector<uint8_t> pixels; // RGBA pixels
+    int width;
+    int height;
+};
 
-// Define missing functions
+ThreadSafeQueue<GyroData> gyroQueue;
+ThreadSafeQueue<HandTrackingData> handQueue;
+ThreadSafeQueue<RawFrame> frameQueue;
+GyroData latestGyro = { 0.0f, 0.0f, 0.0f };
+HandTrackingData latestHand = {};
 template<typename T>
 T Clamp(T value, T minVal, T maxVal) {
     return (value < minVal) ? minVal : (value > maxVal) ? maxVal : value;
 }
-
-static boost::interprocess::mapped_region* handRegion = nullptr;
-static std::unique_ptr<boost::interprocess::file_mapping> handFile;
-
-// Updated header structure to match Python expectations
 struct FrameHeader {
     uint32_t magic = 0xDEADBEEF;
     uint32_t timestamp_ms;
@@ -48,11 +50,18 @@ struct FrameHeader {
     uint32_t pixel_format;  // 0=RGBA, 1=RGB, 2=H264
 }; 
 
+<<<<<<< Updated upstream
 //std::vector<HandTrackingData> ReadHandTrackingData(const std::string& filename);
 bool isStdoutPiped();
 uint32_t GetCurrentTimeMs();
 bool SendH264Frame(const std::vector<uint8_t>& frameData, int width, int height);
 // -------- H264 Encoder Class --------
+=======
+bool isStdoutPiped();
+uint32_t GetCurrentTimeMs();
+bool SendH264Frame(const std::vector<uint8_t>& frameData, int width, int height);
+
+>>>>>>> Stashed changes
 class H264Encoder {
 public:
     H264Encoder(int width, int height, int fps)
@@ -173,7 +182,7 @@ private:
     SwsContext* swsCtx = nullptr;
     int64_t frameIndex = 0;
 };
-// -------- Main Function --------
+
 int main(void) {
     std::ofstream debugLog("debug.log", std::ios::app);
     debugLog << "[START] VR process launched with H.264 encoding\n";
@@ -192,6 +201,50 @@ int main(void) {
     SetConfigFlags(FLAG_MSAA_4X_HINT | FLAG_WINDOW_HIGHDPI | FLAG_WINDOW_HIDDEN);
     InitWindow(screenWidth, screenHeight, "VR Hand Viewer");
     // Redirect stderr to null and setup stdout for binary data
+    std::atomic<bool> running = true;
+	// thread to start H.264 encoding before the main loop
+    std::thread encoderThread([&] {
+        std::unique_ptr<H264Encoder> encoder = nullptr;
+
+        while (running) {
+            auto optFrame = frameQueue.tryPop();
+            if (!optFrame.has_value()) {
+                std::this_thread::sleep_for(std::chrono::milliseconds(1));
+                continue;
+            }
+
+            RawFrame raw = optFrame.value();
+
+            if (!encoder) {
+                try {
+                    encoder = std::make_unique<H264Encoder>(raw.width, raw.height, 120);
+                    std::ofstream debugLog("debug.log", std::ios::app);
+                    debugLog << "[INFO] H.264 encoder initialized in thread\n";
+                }
+                catch (const std::exception& e) {
+                    std::ofstream debugLog("debug.log", std::ios::app);
+                    debugLog << "[ERROR] Encoder init failed: " << e.what() << "\n";
+                    continue;
+                }
+            }
+
+            try {
+                auto encoded = encoder->encodeFrame(raw.pixels.data());
+                if (!encoded.empty()) {
+                    if (!SendH264Frame(encoded, raw.width, raw.height)) {
+                        std::ofstream debugLog("debug.log", std::ios::app);
+                        debugLog << "[ERROR] Failed to send encoded frame\n";
+                    }
+                }
+            }
+            catch (const std::exception& e) {
+                std::ofstream debugLog("debug.log", std::ios::app);
+                debugLog << "[ERROR] Encoding error: " << e.what() << "\n";
+            }
+        }
+        });
+    encoderThread.detach();
+
     FILE* nullout = nullptr;
     freopen_s(&nullout, "NUL", "w", stderr);
     _setmode(_fileno(stdout), _O_BINARY);
@@ -208,37 +261,35 @@ int main(void) {
     const float eyeSeparation = 0.065f;
     Vector2 lastMousePos = { 0 };
     bool firstMouse = true;
-    Vector3 panelPosition = { 0.0f, 1.8f, 4.0f };
-    Vector3 panelSize = { 17.60f, 5.0f, 0.1f };
-
     fs::path exePath = fs::absolute(fs::path(__argv[0]));
     fs::path sharedDir = exePath.parent_path().parent_path().parent_path().parent_path() / "Shared";
     std::string handFilePath = (sharedDir / "hands.dat").string();
     
     std::unique_ptr<H264Encoder> encoder;
     auto lastFrameTime = std::chrono::high_resolution_clock::now();
+<<<<<<< Updated upstream
     const auto targetFrameTime = std::chrono::microseconds(1000000 / 300); // 300 FPS
 	while (!WindowShouldClose()) {
+=======
+	const auto targetFrameTime = std::chrono::microseconds(1); // FPS logic needs to be reworked 
+
+    while (!WindowShouldClose()) {
+>>>>>>> Stashed changes
         auto currentTime = std::chrono::high_resolution_clock::now();
         auto gyroOpt = gyroQueue.tryPop();
-		if((gyroOpt.has_value()?true:false)) {
+		if(gyroOpt.has_value()) {
         latestGyro = gyroOpt.value();
-        //for debugging purposes
-        //        if (latestGyro.yaw != 0.0f || latestGyro.pitch != 0.0f || latestGyro.roll != 0.0f) {  
-        //            debugLog << "[DEBUG]latestGyro values not 0 \n";
-        //            debugLog << "[INFO] Gyro data received: Yaw=" << latestGyro.yaw << ", Pitch=" << latestGyro.pitch << ", Roll=" << latestGyro.roll << std::endl;  
-        //        } else {  
-        //            debugLog << "[INFO] No new gyro data available, using last known values." << std::endl;  
-        //        }
-        //    
         player.SetYawPitchRoll(latestGyro.yaw, latestGyro.pitch, latestGyro.roll);
         }
 
+<<<<<<< Updated upstream
         
+=======
+        auto handData = handQueue.waitAndPop(); //wait for hand data and try pop 
+>>>>>>> Stashed changes
         player.Update();
         desktopRenderer.update();
-        player.SetPanelInfo(panelPosition, panelSize);
-
+      
         BeginTextureMode(target);
         ClearBackground(BLACK);
 
@@ -270,38 +321,17 @@ int main(void) {
         auto elapsedTime = std::chrono::high_resolution_clock::now() - lastFrameTime;
         if (elapsedTime >= targetFrameTime) {
             lastFrameTime = currentTime;
-
-            // Grab Frame and Encode
+            //send raw frame to frame queue to encode on other thread 
             Image frame = LoadImageFromTexture(target.texture);
             ImageFlipVertical(&frame);
 
-            if (!encoder) {
-                try {
-                    encoder = std::make_unique<H264Encoder>(frame.width, frame.height, 120);
-                    debugLog << "[INFO] H.264 encoder initialized: " << frame.width << "x" << frame.height << std::endl;
-                }
-                catch (const std::exception& e) {
-                    debugLog << "[ERROR] Failed to initialize encoder: " << e.what() << std::endl;
-                    UnloadImage(frame);
-                    break;
-                }
-            }
-
-            try {
-                auto encoded = encoder->encodeFrame((uint8_t*)frame.data);
-
-                if (!encoded.empty()) {
-                    if (!SendH264Frame(encoded, frame.width, frame.height)) {
-                        debugLog << "[ERROR] Failed to send H.264 frame" << std::endl;
-                        UnloadImage(frame);
-                        break;
-                    }
-                }
-            }
-            catch (const std::exception& e) {
-                debugLog << "[ERROR] Encoding error: " << e.what() << std::endl;
-            }
-
+            RawFrame rf;
+            rf.width = frame.width;
+            rf.height = frame.height;
+            rf.pixels.resize(frame.width * frame.height * 4);
+            memcpy(rf.pixels.data(), frame.data, rf.pixels.size());
+            frameQueue.push(rf);
+            
             UnloadImage(frame);
         }
         else {
@@ -310,15 +340,10 @@ int main(void) {
         }
     }
 
-    // Cleanup
-    if (handRegion) {
-        delete handRegion;
-        handRegion = nullptr;
-    }
-    handFile.reset();
-
+   
     desktopRenderer.cleanup();
     UnloadRenderTexture(target);
+	running = false; // Signal the encoder thread to stop
     CloseWindow();
     debugLog << "[END] VR process terminated\n";
     return 0;
@@ -360,6 +385,7 @@ bool SendH264Frame(const std::vector<uint8_t>& frameData, int width, int height)
         return false;
     }
 }
+<<<<<<< Updated upstream
 
 std::vector<HandTrackingData> ReadHandTrackingData(const std::string& filename) {
     namespace bip = boost::interprocess;
@@ -454,3 +480,5 @@ bool ReadGyroData(const std::string& filename, float& yaw, float& pitch, float& 
     }
 }
 */
+=======
+>>>>>>> Stashed changes

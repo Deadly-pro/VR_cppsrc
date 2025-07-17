@@ -59,11 +59,6 @@ void Player::SetYawPitchRoll(float yaw, float pitch, float roll) {
     rotation = { smoothPitch,smoothYaw, smoothRoll };
 }
 
-void Player::SetPanelInfo(const Vector3& pos, const Vector3& size) {
-    panelPos = pos;
-    panelSize = size;
-}
-
 void Player::Update() {
     camera.position = position;
 
