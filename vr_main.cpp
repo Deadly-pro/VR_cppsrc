@@ -50,18 +50,14 @@ struct FrameHeader {
     uint32_t pixel_format;  // 0=RGBA, 1=RGB, 2=H264
 }; 
 
-<<<<<<< Updated upstream
 //std::vector<HandTrackingData> ReadHandTrackingData(const std::string& filename);
 bool isStdoutPiped();
 uint32_t GetCurrentTimeMs();
 bool SendH264Frame(const std::vector<uint8_t>& frameData, int width, int height);
-// -------- H264 Encoder Class --------
-=======
 bool isStdoutPiped();
 uint32_t GetCurrentTimeMs();
 bool SendH264Frame(const std::vector<uint8_t>& frameData, int width, int height);
 
->>>>>>> Stashed changes
 class H264Encoder {
 public:
     H264Encoder(int width, int height, int fps)
@@ -192,7 +188,7 @@ int main(void) {
 
     if (!isStdoutPiped()) {
         debugLog << "[ERROR] Stdout is not piped. Exiting.\n";
-		//return 1; temporary fix to allow piping without waiting for stdout to be piped for go side
+        //return 1; temporary fix to allow piping without waiting for stdout to be piped for go side
     }
     const int screenWidth = 1920;
     const int screenHeight = 1080;
@@ -202,7 +198,7 @@ int main(void) {
     InitWindow(screenWidth, screenHeight, "VR Hand Viewer");
     // Redirect stderr to null and setup stdout for binary data
     std::atomic<bool> running = true;
-	// thread to start H.264 encoding before the main loop
+    // thread to start H.264 encoding before the main loop
     std::thread encoderThread([&] {
         std::unique_ptr<H264Encoder> encoder = nullptr;
 
@@ -254,100 +250,94 @@ int main(void) {
     VRDesktopRenderer desktopRenderer;
     ScreenCapture::initialize();
     Player player;
-    
+
     desktopRenderer.initialize(player);
     desktopRenderer.setMaxUpdateRate(60.0f);
 
     const float eyeSeparation = 0.065f;
     Vector2 lastMousePos = { 0 };
     bool firstMouse = true;
-    fs::path exePath = fs::absolute(fs::path(__argv[0]));
+    // commented out the old file paths that we used to do 
+    /*fs::path exePath = fs::absolute(fs::path(__argv[0]));
     fs::path sharedDir = exePath.parent_path().parent_path().parent_path().parent_path() / "Shared";
-    std::string handFilePath = (sharedDir / "hands.dat").string();
-    
+    std::string handFilePath = (sharedDir / "hands.dat").string();*/
+
     std::unique_ptr<H264Encoder> encoder;
     auto lastFrameTime = std::chrono::high_resolution_clock::now();
-<<<<<<< Updated upstream
     const auto targetFrameTime = std::chrono::microseconds(1000000 / 300); // 300 FPS
-	while (!WindowShouldClose()) {
-=======
-	const auto targetFrameTime = std::chrono::microseconds(1); // FPS logic needs to be reworked 
+   
+        while (!WindowShouldClose()) {
+            auto currentTime = std::chrono::high_resolution_clock::now();
+            auto gyroOpt = gyroQueue.tryPop();
+            if (gyroOpt.has_value()) {
+                latestGyro = gyroOpt.value();
+                player.SetYawPitchRoll(latestGyro.yaw, latestGyro.pitch, latestGyro.roll);
+            }
+            //auto handData = NULL;
+            auto handData = handQueue.tryPop(); //wait for hand data and try pop 
+            player.Update();
+            desktopRenderer.update();
 
-    while (!WindowShouldClose()) {
->>>>>>> Stashed changes
-        auto currentTime = std::chrono::high_resolution_clock::now();
-        auto gyroOpt = gyroQueue.tryPop();
-		if(gyroOpt.has_value()) {
-        latestGyro = gyroOpt.value();
-        player.SetYawPitchRoll(latestGyro.yaw, latestGyro.pitch, latestGyro.roll);
+            BeginTextureMode(target);
+            ClearBackground(BLACK);
+
+            float gap = 30.0f;
+
+            // Left eye
+            rlViewport(0, 0, screenWidth / 2, screenHeight);
+            BeginMode3D(player.GetLeftEyeCamera(eyeSeparation));
+            DrawGrid(20, 1.0f);
+            DrawCube(Vector3{ 4, 0, 0 }, 1, 1, 1, RED);
+            DrawCube(Vector3{ 0, 1.5f, 4 }, 1, 1, 1, BLUE);
+            desktopRenderer.renderDesktopPanels(player, player.GetLeftEyeCamera(eyeSeparation));
+            EndMode3D();
+
+            // Right eye
+            rlViewport((screenWidth / 2) + (int)gap, 0, screenWidth / 2, screenHeight);
+            BeginMode3D(player.GetRightEyeCamera(eyeSeparation));
+            DrawGrid(20, 1.0f);
+            desktopRenderer.renderDesktopPanels(player, player.GetRightEyeCamera(eyeSeparation));
+            EndMode3D();
+
+            rlViewport(0, 0, screenWidth, screenHeight);
+            EndTextureMode();
+            BeginDrawing();
+            ClearBackground(BLACK);
+            DrawTexture(target.texture, 0, 0, WHITE);
+            EndDrawing();
+
+            // Frame Rate Control
+            auto elapsedTime = std::chrono::high_resolution_clock::now() - lastFrameTime;
+            if (elapsedTime >= targetFrameTime) {
+                lastFrameTime = currentTime;
+                //send raw frame to frame queue to encode on other thread 
+                Image frame = LoadImageFromTexture(target.texture);
+                ImageFlipVertical(&frame);
+
+                RawFrame rf;
+                rf.width = frame.width;
+                rf.height = frame.height;
+                rf.pixels.resize(frame.width * frame.height * 4);
+                memcpy(rf.pixels.data(), frame.data, rf.pixels.size());
+                frameQueue.push(rf);
+
+                UnloadImage(frame);
+            }
+            else {
+                // Sleep for remaining time to maintain frame rate
+                //std::this_thread::sleep_for(targetFrameTime - elapsedTime); // caused issues with timing
+            }
         }
 
-<<<<<<< Updated upstream
-        
-=======
-        auto handData = handQueue.waitAndPop(); //wait for hand data and try pop 
->>>>>>> Stashed changes
-        player.Update();
-        desktopRenderer.update();
-      
-        BeginTextureMode(target);
-        ClearBackground(BLACK);
 
-        float gap = 30.0f;
-
-        // Left eye
-        rlViewport(0, 0, screenWidth / 2, screenHeight);
-        BeginMode3D(player.GetLeftEyeCamera(eyeSeparation));
-        DrawGrid(20, 1.0f);
-        DrawCube(Vector3{ 0, 1.5f, 4 }, 1, 1, 1, BLUE);
-        desktopRenderer.renderDesktopPanels(player, player.GetLeftEyeCamera(eyeSeparation));
-        EndMode3D();
-
-        // Right eye
-        rlViewport((screenWidth / 2) + (int)gap, 0, screenWidth / 2, screenHeight);
-        BeginMode3D(player.GetRightEyeCamera(eyeSeparation));
-        DrawGrid(20, 1.0f);
-        desktopRenderer.renderDesktopPanels(player,player.GetRightEyeCamera(eyeSeparation));
-        EndMode3D();
-
-        rlViewport(0, 0, screenWidth, screenHeight);
-        EndTextureMode();
-        BeginDrawing();
-        ClearBackground(BLACK);
-        DrawTexture(target.texture, 0, 0, WHITE);
-        EndDrawing();
-
-        // Frame Rate Control
-        auto elapsedTime = std::chrono::high_resolution_clock::now() - lastFrameTime;
-        if (elapsedTime >= targetFrameTime) {
-            lastFrameTime = currentTime;
-            //send raw frame to frame queue to encode on other thread 
-            Image frame = LoadImageFromTexture(target.texture);
-            ImageFlipVertical(&frame);
-
-            RawFrame rf;
-            rf.width = frame.width;
-            rf.height = frame.height;
-            rf.pixels.resize(frame.width * frame.height * 4);
-            memcpy(rf.pixels.data(), frame.data, rf.pixels.size());
-            frameQueue.push(rf);
-            
-            UnloadImage(frame);
-        }
-        else {
-            // Sleep for remaining time to maintain frame rate
-			//std::this_thread::sleep_for(targetFrameTime - elapsedTime); // caused issues with timing
-        }
+        desktopRenderer.cleanup();
+        UnloadRenderTexture(target);
+        running = false; // Signal the encoder thread to stop
+        CloseWindow();
+        debugLog << "[END] VR process terminated\n";
+        return 0;
     }
 
-   
-    desktopRenderer.cleanup();
-    UnloadRenderTexture(target);
-	running = false; // Signal the encoder thread to stop
-    CloseWindow();
-    debugLog << "[END] VR process terminated\n";
-    return 0;
-}
 
 bool isStdoutPiped() {
     return !_isatty(_fileno(stdout));
@@ -381,104 +371,7 @@ bool SendH264Frame(const std::vector<uint8_t>& frameData, int width, int height)
     }
     catch (const std::exception& e) {
         std::ofstream errorLog("frame_error.log", std::ios::app);
-        errorLog << "Error sending H.264 frame: " << e.what() << std::endl;
+        //errorLog << "Error sending H.264 frame: " << e.what() << std::endl;
         return false;
     }
 }
-<<<<<<< Updated upstream
-
-std::vector<HandTrackingData> ReadHandTrackingData(const std::string& filename) {
-    namespace bip = boost::interprocess;
-    std::vector<HandTrackingData> handData;
-
-    try {
-        if (!fs::exists(filename)) {
-            return handData;
-        }
-
-        if (!handFile) {
-            handFile = std::make_unique<bip::file_mapping>(filename.c_str(), bip::read_only);
-            handRegion = new bip::mapped_region(*handFile, bip::read_only);
-        }
-
-        const char* mem = static_cast<const char*>(handRegion->get_address());
-        size_t regionSize = handRegion->get_size();
-
-        if (regionSize < sizeof(uint32_t)) {
-            return handData;
-        }
-
-        uint32_t size;
-        memcpy(&size, mem, sizeof(uint32_t));
-
-        if (size == 0 || size > regionSize - sizeof(uint32_t)) {
-            return handData;
-        }
-
-        std::string json_data(mem + sizeof(uint32_t), size);
-        auto parsed = nlohmann::json::parse(json_data);
-
-        for (const auto& hand : parsed) {
-            HandTrackingData tracked;
-            tracked.handedness = hand.value("handedness", "");
-           
-            if (hand.contains("landmarks")) {
-                for (const auto& lm : hand["landmarks"]) {
-                    Vector3 pt = {
-                        lm.value("x", 0.0f),
-                        lm.value("y", 0.0f),
-                        lm.value("z", 0.0f)
-                    };
-                    tracked.landmarks.push_back(pt);
-                }
-            }
-            handData.push_back(tracked);
-        }
-    }
-    catch (const std::exception& e) {
-        std::ofstream errorLog("hand_error.log", std::ios::app);
-        errorLog << "Error reading hand tracking data: " << e.what() << std::endl;
-    }
-
-    return handData;
-}
-/*
-bool ReadGyroData(const std::string& filename, float& yaw, float& pitch, float& roll) {
-    if (std::cin.eof()) return false;
-    try {
-        std::string line;
-        if (!std::getline(std::cin, line)) {
-            return false; // EOF
-        }
-
-        if (line.empty()) {
-            return false;
-        }
-
-        auto j = nlohmann::json::parse(line);
-        float alpha = j.value("alpha", 0.0f);
-        float beta = j.value("beta", 0.0f);
-        float gamma = j.value("gamma", 0.0f);
-    
-        if (alpha == 0.0f && beta == 0.0f && gamma == 0.0f) {
-            yaw += DEG2RAD * alpha;
-            pitch += DEG2RAD * gamma;
-            roll += DEG2RAD * beta;
-        }
-        else {
-            yaw = DEG2RAD * alpha;
-            pitch = DEG2RAD * gamma;
-            roll = DEG2RAD * beta;
-        }
-
-        return true;
-    }
-    catch (const std::exception& e) {
-        std::ofstream errorLog("gyro_error.log", std::ios::app);
-        errorLog << "Error reading gyro data: " << e.what() << std::endl;
-        return false;
-    }
-}
-*/
-=======
->>>>>>> Stashed changes

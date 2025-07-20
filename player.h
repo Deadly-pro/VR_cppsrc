@@ -37,7 +37,7 @@ public:
     Vector3 ComputeHandAnchorPosition(const std::string& handedness);
     void DrawHands(const std::vector<HandTrackingData>& hands);
     Vector3 GetPosition() const;
-    Vector3 GetForward() const;
+    Vector3 GetForward();
     
 private:
     Vector3 position;

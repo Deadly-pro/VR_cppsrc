@@ -4,13 +4,6 @@
 #include <cmath>
 #include "hand_reader.h"
 #define DEGTORAD (PI / 180.0f)
-ThreadSafeQueue<std::vector<HandTrackingData>> handQueue;
-
-void StartHandTracking()
-{
-    std::thread t(HandTrackingReaderThread, std::ref(handQueue));
-    t.detach();
-}
 
 
 Player::Player() {
@@ -36,10 +29,10 @@ Vector3 Player::GetPosition() const {
     return position;
 }
 
-Vector3 Player::GetForward() const {
+Vector3 Player::GetForward()  {
     float radYaw = DEG2RAD * yaw;
     float radPitch = DEG2RAD * pitch;
-    return Vector3{ cos(radPitch) * sin(radYaw),sin(radPitch),cos(radPitch) * cos(radYaw) };
+    return Vector3{ -(cos(radPitch) * sin(radYaw)),sin(radPitch),(cos(radPitch) * cos(radYaw)) };
 }
 
 void Player::SetYawPitchRoll(float yaw, float pitch, float roll) {

@@ -28,8 +28,6 @@ void GyroStdinReaderThread(ThreadSafeQueue<GyroData>& queue) {
                     if (line.empty()) continue;
 
                     auto j = nlohmann::json::parse(line);
-<<<<<<< Updated upstream
-
                     float alpha = j.value("alpha", 0.0f);
                     float beta = j.value("beta", 0.0f);
                     float gamma = j.value("gamma", 0.0f);
@@ -40,7 +38,6 @@ void GyroStdinReaderThread(ThreadSafeQueue<GyroData>& queue) {
                     data.roll = DEGRAD * gamma;
                     
                     queue.push(std::move(data));
-=======
                     auto dattype = j.value("type", "");
                     auto payload = j.at("payload");
                     if (dattype == "Gyro") {
@@ -54,7 +51,6 @@ void GyroStdinReaderThread(ThreadSafeQueue<GyroData>& queue) {
                         data.roll = DEGRAD * gamma;
                         queue.push(std::move(data));
                     }
->>>>>>> Stashed changes
                 }
                 catch (const std::exception& e) {
                     log << "Gyro parse error: " << e.what() << std::endl;

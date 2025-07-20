@@ -7,7 +7,7 @@
 #include <windows.h>
 #include <cstdio>
 
-bool CheckStdinAvailable() {
+static bool CheckStdinAvailable() {
     DWORD bytesAvailable = 0;
     HANDLE hIn = GetStdHandle(STD_INPUT_HANDLE);
     if (hIn == INVALID_HANDLE_VALUE) return false;
