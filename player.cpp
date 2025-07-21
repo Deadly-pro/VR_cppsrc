@@ -2,7 +2,7 @@
 #include "raymath.h"
 #include "thread_safe_queue.h"
 #include <cmath>
-#include "hand_reader.h"
+#include "handat_thread.h"
 #define DEGTORAD (PI / 180.0f)
 
 
@@ -13,7 +13,8 @@ Player::Player() {
     camera.fovy = 90.0f;
     camera.up = { 0.0f, 1.0f, 0.0f };
     camera.projection = CAMERA_PERSPECTIVE;
-
+    vrShaderInitialized = false;
+    distortionShader.id = 0;
     laserUV = { 0 };
     laserIntersecting = false;
     //starting mediapipe
@@ -25,8 +26,90 @@ Player::Player() {
     rightHand.landmarks.resize(21);
    
 }
+Player::~Player() {
+    if (vrShaderInitialized && distortionShader.id > 0) {
+        UnloadShader(distortionShader);
+    }
+}
 Vector3 Player::GetPosition() const {
     return position;
+}
+#define GLSL_VERSION 330
+
+void Player::InitializeDistortionShader() {
+    if (vrShaderInitialized) return;
+
+    // Load VR stereo config for a default device (e.g., Oculus Rift CV1 parameters)
+    // You can create a VrDeviceInfo struct with your target headset's parameters.
+    VrDeviceInfo device = { 0 };
+    device.hResolution = 2160;
+    device.vResolution = 1200;
+    device.hScreenSize = 0.133793f;
+    device.vScreenSize = 0.0669f;
+    //device.vScreenCenter = 0.04678f;
+    device.eyeToScreenDistance = 0.041f;
+    device.lensSeparationDistance = 0.07f;
+    device.interpupillaryDistance = 0.07f;
+    device.lensDistortionValues[0] = 1.0f;
+    device.lensDistortionValues[1] = 0.22f;
+    device.lensDistortionValues[2] = 0.24f;
+    device.lensDistortionValues[3] = 0.0f;
+    device.chromaAbCorrection[0] = 0.996f;
+    device.chromaAbCorrection[1] = -0.004f;
+    device.chromaAbCorrection[2] = 1.014f;
+    device.chromaAbCorrection[3] = 0.0f;
+
+    VrStereoConfig config = LoadVrStereoConfig(device);
+
+    // Load distortion shader
+    // Make sure the shader file 'distortion330.fs' is in a 'resources' folder
+    // relative to your executable.
+    distortionShader = LoadShader(0, TextFormat("resources/distortion%i.fs", GLSL_VERSION));
+    if (distortionShader.id == 0) {
+        // Handle error: shader not loaded
+        return;
+    }
+
+    // Update distortion shader with lens and distortion-scale parameters
+    SetShaderValue(distortionShader, GetShaderLocation(distortionShader, "leftLensCenter"),
+        config.leftLensCenter, SHADER_UNIFORM_VEC2);
+    SetShaderValue(distortionShader, GetShaderLocation(distortionShader, "rightLensCenter"),
+        config.rightLensCenter, SHADER_UNIFORM_VEC2);
+    SetShaderValue(distortionShader, GetShaderLocation(distortionShader, "leftScreenCenter"),
+        config.leftScreenCenter, SHADER_UNIFORM_VEC2);
+    SetShaderValue(distortionShader, GetShaderLocation(distortionShader, "rightScreenCenter"),
+        config.rightScreenCenter, SHADER_UNIFORM_VEC2);
+    SetShaderValue(distortionShader, GetShaderLocation(distortionShader, "scale"),
+        config.scale, SHADER_UNIFORM_VEC2);
+    SetShaderValue(distortionShader, GetShaderLocation(distortionShader, "scaleIn"),
+        config.scaleIn, SHADER_UNIFORM_VEC2);
+    SetShaderValue(distortionShader, GetShaderLocation(distortionShader, "deviceWarpParam"),
+        device.lensDistortionValues, SHADER_UNIFORM_VEC4);
+    SetShaderValue(distortionShader, GetShaderLocation(distortionShader, "chromaAbParam"),
+        device.chromaAbCorrection, SHADER_UNIFORM_VEC4);
+
+    vrShaderInitialized = true;
+}
+
+// This method applies the distortion shader to the final rendered texture
+void Player::ApplyDistortion(RenderTexture2D sourceTexture) {
+    if (!vrShaderInitialized || distortionShader.id == 0) {
+        // If shader isn't ready, just draw the undistorted texture
+        DrawTextureRec(sourceTexture.texture, Rectangle{ 0, 0, (float)sourceTexture.texture.width, (float)-sourceTexture.texture.height }, Vector2 { 0, 0 }, WHITE);
+        return;
+    }
+
+    BeginShaderMode(distortionShader);
+    // NOTE: The source texture must be drawn flipped vertically due to OpenGL conventions
+    DrawTextureRec(sourceTexture.texture,
+        Rectangle {
+        0, 0, (float)sourceTexture.texture.width, (float)-sourceTexture.texture.height
+    },
+        Vector2 {
+        0, 0
+    },
+        WHITE);
+    EndShaderMode();
 }
 
 Vector3 Player::GetForward()  {
@@ -65,7 +148,6 @@ void Player::Update() {
 void Player::UpdateVRHand(VRHand& hand, const HandTrackingData& handData) {
     hand.label = handData.handedness;
     hand.is_tracked = !handData.landmarks.empty();
-    hand.confidence = 1.0f;
     hand.estimated_depth = 1.0f;
 
     if (hand.is_tracked && handData.landmarks.size() >= 21) {
@@ -107,7 +189,6 @@ void Player::UpdateVRHand(VRHand& hand, const HandTrackingData& handData) {
             }
             hand.landmarks[i].position = worldPos;
             hand.landmarks[i].active = true;
-            hand.landmarks[i].confidence = 1.0f;
             hand.landmarks[i].landmark_id = static_cast<int>(i);
         }
     }

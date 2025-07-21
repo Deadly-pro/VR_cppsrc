@@ -5,26 +5,23 @@
 struct VRLandmark {
     Vector3 position;
     bool active;
-    float confidence;
     int landmark_id;
 };
 
 struct VRHand {
     std::string label;
     bool is_tracked;
-    float confidence;
     float estimated_depth;
     std::vector<VRLandmark> landmarks;
 };
-
-struct HandTrackingData {
-    std::string handedness;
-    std::vector<Vector3> landmarks;
-    };
+struct HandTrackingData;
 
 class Player {
 public:
+    Shader distortionShader;
+    bool vrShaderInitialized;
     Player();
+    ~Player();
     VRHand leftHand;
     VRHand rightHand;
     void SetYawPitchRoll(float yaw, float pitch, float roll);
@@ -38,7 +35,8 @@ public:
     void DrawHands(const std::vector<HandTrackingData>& hands);
     Vector3 GetPosition() const;
     Vector3 GetForward();
-    
+    void InitializeDistortionShader();
+    void ApplyDistortion(RenderTexture2D sourceTexture);
 private:
     Vector3 position;
     Camera3D camera;

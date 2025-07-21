@@ -6,6 +6,11 @@
 #include "handat_thread.h"
 #include <windows.h>
 #include <cstdio>
+struct Vector3 {
+    float x, y, z;
+    Vector3() : x(0), y(0), z(0) {}
+    Vector3(float _x, float _y, float _z) : x(_x), y(_y), z(_z) {}
+};
 
 static bool CheckStdinAvailable() {
     DWORD bytesAvailable = 0;
@@ -26,13 +31,11 @@ void HandStdinReaderThread(ThreadSafeQueue<HandTrackingData>& queue) {
             auto j = json::parse(line);
             auto type = j.value("type", "");
             if (type != "hand") continue;
-            auto payload = j.at("payload");  // this is an array of the payload 
-
+            auto payload = j.at("payload");  
             for (auto& h : payload) {
                 HandTrackingData data;
                 data.handedness = h.value("handedness", "");
-                data.confidence = h.value("confidence", 0.0f);
-
+                
                 auto lm = h.at("landmarks");
                 for (auto& pt : lm) {
                     data.landmarks.push_back({

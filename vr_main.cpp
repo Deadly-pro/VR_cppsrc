@@ -18,6 +18,7 @@
 #include <memory>
 #include <stdexcept>
 #include "gyro_thread.h"
+#include "handat_thread.h"
 extern "C" {
 #include <libavcodec/avcodec.h>
 #include <libavutil/imgutils.h>
@@ -49,11 +50,6 @@ struct FrameHeader {
     uint32_t height;
     uint32_t pixel_format;  // 0=RGBA, 1=RGB, 2=H264
 }; 
-
-//std::vector<HandTrackingData> ReadHandTrackingData(const std::string& filename);
-bool isStdoutPiped();
-uint32_t GetCurrentTimeMs();
-bool SendH264Frame(const std::vector<uint8_t>& frameData, int width, int height);
 bool isStdoutPiped();
 uint32_t GetCurrentTimeMs();
 bool SendH264Frame(const std::vector<uint8_t>& frameData, int width, int height);
@@ -182,23 +178,40 @@ private:
 int main(void) {
     std::ofstream debugLog("debug.log", std::ios::app);
     debugLog << "[START] VR process launched with H.264 encoding\n";
-    std::thread gyroThread(GyroStdinReaderThread, std::ref(gyroQueue));
-    gyroThread.detach();
-    debugLog << "[INFO] Started GyroStdinReaderThread\n";
-
+    // config data 
+    const int screenWidth = 1920;
+    const int screenHeight = 1080;
+    //configuring raylib 
+    SetTraceLogLevel(LOG_NONE);
+    SetConfigFlags(FLAG_MSAA_4X_HINT | FLAG_WINDOW_HIGHDPI | FLAG_WINDOW_HIDDEN);
+    InitWindow(screenWidth,screenHeight,"Raylib");
+    if (!IsWindowReady()) {
+        debugLog << "[FATAL] Failed to create Raylib window and graphics context. Exiting.\n";
+        return 1;
+    }
+    //setting file mode out to be stdout 
+    FILE* nullout = nullptr;
+    freopen_s(&nullout, "NUL", "w", stderr);
+    _setmode(_fileno(stdout), _O_BINARY);
+    setvbuf(stdout, nullptr, _IONBF, 0);
     if (!isStdoutPiped()) {
         debugLog << "[ERROR] Stdout is not piped. Exiting.\n";
         //return 1; temporary fix to allow piping without waiting for stdout to be piped for go side
     }
-    const int screenWidth = 1920;
-    const int screenHeight = 1080;
 
-    SetTraceLogLevel(LOG_NONE);
-    SetConfigFlags(FLAG_MSAA_4X_HINT | FLAG_WINDOW_HIGHDPI | FLAG_WINDOW_HIDDEN);
-    InitWindow(screenWidth, screenHeight, "VR Hand Viewer");
-    // Redirect stderr to null and setup stdout for binary data
+    //initialisation of raylib objects 
+    RenderTexture2D target = LoadRenderTexture(screenWidth, screenHeight);
+    VRDesktopRenderer desktopRenderer;
+    ScreenCapture::initialize();
+    Player player;
+    desktopRenderer.initialize(player);
+    desktopRenderer.setMaxUpdateRate(60.0f);
+    const float eyeSeparation = 0.065f;
+    Vector2 lastMousePos = { 0 };
+    bool firstMouse = true;
+
+    //threads
     std::atomic<bool> running = true;
-    // thread to start H.264 encoding before the main loop
     std::thread encoderThread([&] {
         std::unique_ptr<H264Encoder> encoder = nullptr;
 
@@ -240,23 +253,11 @@ int main(void) {
         }
         });
     encoderThread.detach();
-
-    FILE* nullout = nullptr;
-    freopen_s(&nullout, "NUL", "w", stderr);
-    _setmode(_fileno(stdout), _O_BINARY);
-    setvbuf(stdout, nullptr, _IONBF, 0);
-
-    RenderTexture2D target = LoadRenderTexture(screenWidth, screenHeight);
-    VRDesktopRenderer desktopRenderer;
-    ScreenCapture::initialize();
-    Player player;
-
-    desktopRenderer.initialize(player);
-    desktopRenderer.setMaxUpdateRate(60.0f);
-
-    const float eyeSeparation = 0.065f;
-    Vector2 lastMousePos = { 0 };
-    bool firstMouse = true;
+    std::thread gyroThread(GyroStdinReaderThread, std::ref(gyroQueue));
+    gyroThread.detach();
+    debugLog << "[INFO] Started GyroStdinReaderThread\n";
+    std::thread handThread(HandStdinReaderThread, std::ref(handQueue));
+    handThread.detach();
     // commented out the old file paths that we used to do 
     /*fs::path exePath = fs::absolute(fs::path(__argv[0]));
     fs::path sharedDir = exePath.parent_path().parent_path().parent_path().parent_path() / "Shared";
@@ -287,8 +288,6 @@ int main(void) {
             rlViewport(0, 0, screenWidth / 2, screenHeight);
             BeginMode3D(player.GetLeftEyeCamera(eyeSeparation));
             DrawGrid(20, 1.0f);
-            DrawCube(Vector3{ 4, 0, 0 }, 1, 1, 1, RED);
-            DrawCube(Vector3{ 0, 1.5f, 4 }, 1, 1, 1, BLUE);
             desktopRenderer.renderDesktopPanels(player, player.GetLeftEyeCamera(eyeSeparation));
             EndMode3D();
 
