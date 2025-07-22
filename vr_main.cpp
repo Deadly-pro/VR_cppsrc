@@ -274,8 +274,12 @@ int main(void) {
                 latestGyro = gyroOpt.value();
                 player.SetYawPitchRoll(latestGyro.yaw, latestGyro.pitch, latestGyro.roll);
             }
-            //auto handData = NULL;
-            auto handData = handQueue.tryPop(); //wait for hand data and try pop 
+            auto handDat = handQueue.tryPop(); //wait for hand data and try pop 
+            std::vector<HandTrackingData> handData;
+            if (handDat.has_value()) {
+                handData.push_back(handDat.value());  
+            }
+
             player.Update();
             desktopRenderer.update();
 
@@ -288,6 +292,7 @@ int main(void) {
             rlViewport(0, 0, screenWidth / 2, screenHeight);
             BeginMode3D(player.GetLeftEyeCamera(eyeSeparation));
             DrawGrid(20, 1.0f);
+            player.DrawHands(handData);
             desktopRenderer.renderDesktopPanels(player, player.GetLeftEyeCamera(eyeSeparation));
             EndMode3D();
 
@@ -295,6 +300,7 @@ int main(void) {
             rlViewport((screenWidth / 2) + (int)gap, 0, screenWidth / 2, screenHeight);
             BeginMode3D(player.GetRightEyeCamera(eyeSeparation));
             DrawGrid(20, 1.0f);
+            player.DrawHands(handData);
             desktopRenderer.renderDesktopPanels(player, player.GetRightEyeCamera(eyeSeparation));
             EndMode3D();
 
