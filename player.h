@@ -35,8 +35,8 @@ public:
     void DrawHands(const std::vector<HandTrackingData>& hands);
     Vector3 GetPosition() const;
     Vector3 GetForward();
-    void InitializeDistortionShader();
-    void ApplyDistortion(RenderTexture2D sourceTexture);
+   // void InitializeDistortionShader();
+   // void ApplyDistortion(RenderTexture2D sourceTexture);
 private:
     Vector3 position;
     Camera3D camera;

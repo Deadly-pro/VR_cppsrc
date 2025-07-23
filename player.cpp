@@ -34,8 +34,8 @@ Player::~Player() {
 Vector3 Player::GetPosition() const {
     return position;
 }
+/*
 #define GLSL_VERSION 330
-
 void Player::InitializeDistortionShader() {
     if (vrShaderInitialized) return;
 
@@ -94,13 +94,11 @@ void Player::InitializeDistortionShader() {
 // This method applies the distortion shader to the final rendered texture
 void Player::ApplyDistortion(RenderTexture2D sourceTexture) {
     if (!vrShaderInitialized || distortionShader.id == 0) {
-        // If shader isn't ready, just draw the undistorted texture
         DrawTextureRec(sourceTexture.texture, Rectangle{ 0, 0, (float)sourceTexture.texture.width, (float)-sourceTexture.texture.height }, Vector2 { 0, 0 }, WHITE);
         return;
     }
 
     BeginShaderMode(distortionShader);
-    // NOTE: The source texture must be drawn flipped vertically due to OpenGL conventions
     DrawTextureRec(sourceTexture.texture,
         Rectangle {
         0, 0, (float)sourceTexture.texture.width, (float)-sourceTexture.texture.height
@@ -111,7 +109,7 @@ void Player::ApplyDistortion(RenderTexture2D sourceTexture) {
         WHITE);
     EndShaderMode();
 }
-
+*/
 Vector3 Player::GetForward()  {
     float radYaw = DEG2RAD * yaw;
     float radPitch = DEG2RAD * pitch;
