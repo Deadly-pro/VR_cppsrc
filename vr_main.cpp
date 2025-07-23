@@ -335,7 +335,7 @@ int main(void) {
             }
             else {
                 // Sleep for remaining time to maintain frame rate
-                //std::this_thread::sleep_for(targetFrameTime - elapsedTime); // caused issues with timing
+                std::this_thread::sleep_for(targetFrameTime - elapsedTime); // caused issues with timing
             }
         }
 

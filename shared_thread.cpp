@@ -7,6 +7,7 @@
 #include <chrono>
 #include <windows.h>
 #include <cstdio>
+#include <chrono>
 
 // Custom headers for data structures and the thread-safe queue
 #include "thread_safe_queue.h"
@@ -68,6 +69,7 @@ void StdinReaderThread(ThreadSafeQueue<GyroData>& gyroQueue, ThreadSafeQueue<Han
             // Read a line from stdin. If the stream closes, getline returns false.
             if (std::getline(std::cin, line)) {
                 if (line.empty()) {
+                    std::this_thread::sleep_for(std::chrono::milliseconds(20));
                     continue; // Skip empty lines
                 }
 
@@ -79,7 +81,7 @@ void StdinReaderThread(ThreadSafeQueue<GyroData>& gyroQueue, ThreadSafeQueue<Han
                     std::string type = j.value("type", "");
 
                     if (type == "Gyro") {
-                        log << "[INFO] Gyro data received: " << line << std::endl;
+                        // log << "[INFO] Gyro data received: " << line << std::endl;
                         auto payload = j.at("payload");
 
                         float alpha = payload.value("alpha", 0.0f);
@@ -118,8 +120,8 @@ void StdinReaderThread(ThreadSafeQueue<GyroData>& gyroQueue, ThreadSafeQueue<Han
                                     pt.value("z", 0.0f)
                                 ));
                             }
-                            log << "[INFO] Hand data for " << data.handedness << " received with "
-								<< data.landmarks.size() << " landmarks." << std::endl;
+                            // log << "[INFO] Hand data for " << data.handedness << " received with "
+							//	<< data.landmarks.size() << " landmarks." << std::endl;
                             handQueue.push(std::move(data));
                         }
                     }
