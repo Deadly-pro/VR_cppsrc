@@ -1,5 +1,6 @@
 #pragma once
 
+#include "platform.h"
 #include "raylib.h"
 #include <vector>
 #include <string>

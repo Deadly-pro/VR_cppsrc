@@ -1,4 +1,5 @@
-﻿#include "vr_desktop_render.h"
+﻿#include "platform.h"
+#include "vr_desktop_render.h"
 #include "rlgl.h"
 #include "player.h"
 #include <raymath.h>
@@ -48,34 +49,37 @@ void VRDesktopRenderer::update()
 {
     if (!texturesInitialized) return;
 
+    // The update rate check can remain to prevent updating textures too frequently
     auto now = std::chrono::steady_clock::now();
     float elapsed = std::chrono::duration<float>(now - lastUpdate).count();
 
     if (elapsed < (1.0f / maxUpdateRate)) {
         return;
     }
-
     lastUpdate = now;
 
-    // Process all captured frames
-    std::optional<CapturedFrame> frameOpt;
+    // --- MODIFICATION: Process frames using pointers and release them ---
+    std::optional<CapturedFrame*> frameOpt;
     while ((frameOpt = ScreenCapture::getLatestFrame())) {
-        CapturedFrame frame = *frameOpt;
+        CapturedFrame* frame = *frameOpt; // Get pointer from optional
 
-        if (!frame.isValid || frame.screenIndex >= desktopTextures.size()) {
+        if (!frame->isValid || frame->screenIndex >= desktopTextures.size()) {
+            ScreenCapture::releaseFrame(frame); // Release invalid frame
             continue;
         }
 
         Image img = {
-            .data = frame.pixels.data(),
-            .width = frame.width,
-            .height = frame.height,
+            .data = frame->pixels.data(),
+            .width = frame->width,
+            .height = frame->height,
             .mipmaps = 1,
             .format = PIXELFORMAT_UNCOMPRESSED_R8G8B8A8
         };
 
-        // Update existing texture
-        UpdateTexture(desktopTextures[frame.screenIndex], img.data);
+        UpdateTexture(desktopTextures[frame->screenIndex], img.data);
+
+        // *** CRUCIAL: Release the frame back to the pool after use ***
+        ScreenCapture::releaseFrame(frame);
     }
 }
 void VRDesktopRenderer::renderDesktopPanels(Player& player, Camera3D camera)

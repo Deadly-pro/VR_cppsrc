@@ -1,6 +1,7 @@
 #ifndef GESTURE_RECOGNITION_H
 #define GESTURE_RECOGNITION_H
 
+#include "platform.h"
 #include "raylib.h"
 #include <vector>
 #include <string>

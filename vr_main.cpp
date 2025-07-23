@@ -1,4 +1,5 @@
-﻿#include "raylib.h"
+﻿#include "platform.h"
+#include "raylib.h"
 #include "raymath.h"
 #include "rlgl.h"
 #include "player.h"

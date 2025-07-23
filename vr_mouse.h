@@ -1,6 +1,7 @@
 #ifndef VR_MOUSE_H
 #define VR_MOUSE_H
 
+#include "platform.h"
 #include "raylib.h"
 #include "gesture_recognition.h"
 
