@@ -27,65 +27,72 @@ extern "C" {
 #include <libswscale/swscale.h>
 }
 
-namespace fs = std::filesystem;
+// Data structure for passing raw frames to the encoder thread
 struct RawFrame {
     std::vector<uint8_t> pixels; // RGBA pixels
     int width;
     int height;
 };
 
+// Thread-safe queues for inter-thread communication
 ThreadSafeQueue<GyroData> gyroQueue;
 ThreadSafeQueue<HandTrackingData> handQueue;
-ThreadSafeQueue<RawFrame> frameQueue;
-GyroData latestGyro = { 0.0f, 0.0f, 0.0f };
-HandTrackingData latestHand = {};
-template<typename T>
-T Clamp(T value, T minVal, T maxVal) {
-    return (value < minVal) ? minVal : (value > maxVal) ? maxVal : value;
-}
-struct FrameHeader {
-    uint32_t magic = 0xDEADBEEF;
-    uint32_t timestamp_ms;
-    uint32_t frame_size;
-    uint32_t width;
-    uint32_t height;
-    uint32_t pixel_format;  // 0=RGBA, 1=RGB, 2=H264
-}; 
+ThreadSafeQueue<RawFrame> frameQueue; // Main thread produces, encoder thread consumes
+
+// Forward declarations
 bool isStdoutPiped();
 uint32_t GetCurrentTimeMs();
 bool SendH264Frame(const std::vector<uint8_t>& frameData, int width, int height);
 
+// H264 Encoder Class
 class H264Encoder {
 public:
     H264Encoder(int width, int height, int fps)
         : width(width), height(height), fps(fps) {
 
-        codec = avcodec_find_encoder(AV_CODEC_ID_H264);
+        // *** FIX: Attempt to find the NVIDIA NVENC hardware encoder first ***
+        codec = avcodec_find_encoder_by_name("h264_nvenc");
+        const char* encoderName = "h264_nvenc";
+
+        // If NVENC is not found, fall back to the software encoder
         if (!codec) {
-            throw std::runtime_error("H.264 codec not found");
+            encoderName = "libx264"; // The fast software encoder
+            codec = avcodec_find_encoder_by_name(encoderName);
+            if (!codec) {
+                throw std::runtime_error("H.264 software encoder (libx264) not found");
+            }
         }
+
+        // Log which encoder is being used
+        std::ofstream debugLog("debug.log", std::ios::app);
+        debugLog << "[INFO] Using H.264 encoder: " << encoderName << "\n";
+
 
         ctx = avcodec_alloc_context3(codec);
-        if (!ctx) {
-            throw std::runtime_error("Failed to allocate codec context");
-        }
+        if (!ctx) throw std::runtime_error("Failed to allocate codec context");
 
-        ctx->bit_rate = 2000000;
+        ctx->bit_rate = 16000000; // 16 Mbps for high quality VR streaming
         ctx->width = width;
         ctx->height = height;
         ctx->time_base = AVRational{ 1, fps };
         ctx->framerate = AVRational{ fps, 1 };
         ctx->pix_fmt = AV_PIX_FMT_YUV420P;
         ctx->gop_size = 10;
-        ctx->max_b_frames = 0;
+        ctx->max_b_frames = 1;
 
-        // Ultra-fast preset for real-time streaming
-        // Add these for better rate control:
-        av_opt_set(ctx->priv_data, "crf", "23", 0);  // Constant rate factor
-        av_opt_set(ctx->priv_data, "rc-lookahead", "0", 0);  // No lookahead for real-time
-        av_opt_set(ctx->priv_data, "preset", "veryfast", 0);
-        av_opt_set(ctx->priv_data, "tune", "zerolatency", 0);
-        av_opt_set(ctx->priv_data, "profile", "baseline", 0);
+        // *** FIX: Set options specific to the chosen encoder ***
+        if (strcmp(encoderName, "h264_nvenc") == 0) {
+            // Options for NVIDIA NVENC
+            av_opt_set(ctx->priv_data, "preset", "p5", 0); // p5 is a good balance of speed and quality for NVENC
+            av_opt_set(ctx->priv_data, "tune", "ll", 0);   // ll = low latency
+            av_opt_set(ctx->priv_data, "zerolatency", "1", 0);
+        }
+        else {
+            // Options for libx264 (software encoder)
+            av_opt_set(ctx->priv_data, "preset", "veryfast", 0);
+            av_opt_set(ctx->priv_data, "tune", "zerolatency", 0);
+        }
+
 
         if (avcodec_open2(ctx, codec, nullptr) < 0) {
             avcodec_free_context(&ctx);
@@ -93,33 +100,18 @@ public:
         }
 
         frame = av_frame_alloc();
-        if (!frame) {
-            avcodec_free_context(&ctx);
-            throw std::runtime_error("Failed to allocate frame");
-        }
-
         frame->format = ctx->pix_fmt;
         frame->width = width;
         frame->height = height;
-
-        if (av_frame_get_buffer(frame, 32) < 0) {
+        if (av_frame_get_buffer(frame, 0) < 0) {
             av_frame_free(&frame);
             avcodec_free_context(&ctx);
             throw std::runtime_error("Failed to allocate frame buffer");
         }
 
         packet = av_packet_alloc();
-        if (!packet) {
-            av_frame_free(&frame);
-            avcodec_free_context(&ctx);
-            throw std::runtime_error("Failed to allocate packet");
-        }
 
-        swsCtx = sws_getContext(
-            width, height, AV_PIX_FMT_RGBA,
-            width, height, AV_PIX_FMT_YUV420P,
-            SWS_FAST_BILINEAR, nullptr, nullptr, nullptr);
-
+        swsCtx = sws_getContext(width, height, AV_PIX_FMT_RGBA, width, height, AV_PIX_FMT_YUV420P, SWS_BILINEAR, nullptr, nullptr, nullptr);
         if (!swsCtx) {
             av_packet_free(&packet);
             av_frame_free(&frame);
@@ -139,28 +131,18 @@ public:
         const uint8_t* inData[1] = { rgba };
         int inStride[1] = { 4 * width };
 
-        sws_scale(
-            swsCtx,
-            inData, inStride,
-            0, height,
-            frame->data, frame->linesize);
-
+        sws_scale(swsCtx, inData, inStride, 0, height, frame->data, frame->linesize);
         frame->pts = frameIndex++;
 
-        int ret = avcodec_send_frame(ctx, frame);
-        if (ret < 0) {
-            throw std::runtime_error("Error sending frame for encoding");
+        if (avcodec_send_frame(ctx, frame) < 0) {
+            return {};
         }
 
         std::vector<uint8_t> outData;
-
+        int ret;
         while ((ret = avcodec_receive_packet(ctx, packet)) == 0) {
             outData.insert(outData.end(), packet->data, packet->data + packet->size);
             av_packet_unref(packet);
-        }
-
-        if (ret != AVERROR(EAGAIN) && ret != AVERROR_EOF) {
-            throw std::runtime_error("Error receiving packet from encoder");
         }
 
         return outData;
@@ -176,124 +158,104 @@ private:
     int64_t frameIndex = 0;
 };
 
-int main(void) {
+void encoder_thread_function(std::atomic<bool>& running) {
+    std::unique_ptr<H264Encoder> encoder = nullptr;
     std::ofstream debugLog("debug.log", std::ios::app);
-    debugLog << "[START] VR process launched with H.264 encoding\n";
-    // config data 
+
+    while (running) {
+        auto optFrame = frameQueue.tryPop();
+        if (!optFrame.has_value()) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(2));
+            continue;
+        }
+
+        RawFrame raw = std::move(optFrame.value());
+
+        if (!encoder) {
+            try {
+                encoder = std::make_unique<H264Encoder>(raw.width, raw.height, 90);
+                // Log is now inside the constructor
+            }
+            catch (const std::exception& e) {
+                debugLog << "[ERROR] Encoder init failed: " << e.what() << "\n";
+                return;
+            }
+        }
+
+        try {
+            auto encoded = encoder->encodeFrame(raw.pixels.data());
+            if (!encoded.empty()) {
+                if (!SendH264Frame(encoded, raw.width, raw.height)) {
+                    debugLog << "[WARN] Failed to send encoded frame to stdout.\n";
+                }
+            }
+        }
+        catch (const std::exception& e) {
+            debugLog << "[ERROR] Encoding exception: " << e.what() << "\n";
+        }
+    }
+    debugLog << "[INFO] Encoder thread shutting down.\n";
+}
+
+int main(void) {
+    std::ofstream debugLog("debug.log");
+    debugLog << "[START] VR process launched.\n";
+
+    av_log_set_level(AV_LOG_QUIET);
+
     const int screenWidth = 1920;
     const int screenHeight = 1080;
-    //configuring raylib 
-    SetTraceLogLevel(LOG_NONE);
+
+    SetTraceLogLevel(LOG_WARNING);
+
     SetConfigFlags(FLAG_MSAA_4X_HINT | FLAG_WINDOW_HIGHDPI | FLAG_WINDOW_HIDDEN);
-    InitWindow(screenWidth,screenHeight,"Raylib");
+    InitWindow(screenWidth, screenHeight, "Raylib VR Stream");
     if (!IsWindowReady()) {
-        debugLog << "[FATAL] Failed to create Raylib window and graphics context. Exiting.\n";
+        debugLog << "[FATAL] Failed to create Raylib window. Exiting.\n";
         return 1;
     }
-    //setting file mode out to be stdout 
-    FILE* nullout = nullptr;
-    freopen_s(&nullout, "NUL", "w", stderr);
+    SetTargetFPS(90);
+
     _setmode(_fileno(stdout), _O_BINARY);
     setvbuf(stdout, nullptr, _IONBF, 0);
     if (!isStdoutPiped()) {
-        debugLog << "[ERROR] Stdout is not piped. Exiting.\n";
-        //return 1; temporary fix to allow piping without waiting for stdout to be piped for go side
+        debugLog << "[WARN] Stdout is not piped. Video stream will go to console.\n";
     }
 
-    //initialisation of raylib objects 
-    RenderTexture2D target = LoadRenderTexture(screenWidth, screenHeight);
+    Player player;
     VRDesktopRenderer desktopRenderer;
     ScreenCapture::initialize();
-    Player player;
     desktopRenderer.initialize(player);
     desktopRenderer.setMaxUpdateRate(60.0f);
     const float eyeSeparation = 0.065f;
-    Vector2 lastMousePos = { 0 };
-    bool firstMouse = true;
 
-    //threads
     std::atomic<bool> running = true;
-    std::thread encoderThread([&] {
-        std::unique_ptr<H264Encoder> encoder = nullptr;
+    std::thread encoderThread(encoder_thread_function, std::ref(running));
+    std::thread stdinThread(StdinReaderThread, std::ref(gyroQueue), std::ref(handQueue));
+    stdinThread.detach();
 
-        while (running) {
-            auto optFrame = frameQueue.tryPop();
-            if (!optFrame.has_value()) {
-                std::this_thread::sleep_for(std::chrono::milliseconds(1));
-                continue;
-            }
+    RenderTexture2D target = LoadRenderTexture(screenWidth, screenHeight);
+    GyroData latestGyro = { 0.0f, 0.0f, 0.0f };
 
-            RawFrame raw = optFrame.value();
-
-            if (!encoder) {
-                try {
-                    encoder = std::make_unique<H264Encoder>(raw.width, raw.height, 120);
-                    std::ofstream debugLog("debug.log", std::ios::app);
-                    debugLog << "[INFO] H.264 encoder initialized in thread\n";
-                }
-                catch (const std::exception& e) {
-                    std::ofstream debugLog("debug.log", std::ios::app);
-                    debugLog << "[ERROR] Encoder init failed: " << e.what() << "\n";
-                    continue;
-                }
-            }
-
-            try {
-                auto encoded = encoder->encodeFrame(raw.pixels.data());
-                if (!encoded.empty()) {
-                    if (!SendH264Frame(encoded, raw.width, raw.height)) {
-                        std::ofstream debugLog("debug.log", std::ios::app);
-                        debugLog << "[ERROR] Failed to send encoded frame\n";
-                    }
-                }
-            }
-            catch (const std::exception& e) {
-                std::ofstream debugLog("debug.log", std::ios::app);
-                debugLog << "[ERROR] Encoding error: " << e.what() << "\n";
-            }
+    while (!WindowShouldClose()) {
+        auto gyroOpt = gyroQueue.tryPop();
+        if (gyroOpt.has_value()) {
+            latestGyro = gyroOpt.value();
+            player.SetYawPitchRoll(latestGyro.yaw, latestGyro.pitch, latestGyro.roll);
         }
-        });
-    encoderThread.detach();
-    /*std::thread gyroThread(GyroStdinReaderThread, std::ref(gyroQueue));
-    gyroThread.detach();
-    debugLog << "[INFO] Started GyroStdinReaderThread\n";
-    std::thread handThread(HandStdinReaderThread, std::ref(handQueue));
-    handThread.detach();*/
 
-	std::thread stdinThread(StdinReaderThread, std::ref(gyroQueue), std::ref(handQueue));
-	stdinThread.detach();
+        std::vector<HandTrackingData> handData;
+        auto handDat = handQueue.tryPop();
+        if (handDat.has_value()) {
+            handData.push_back(handDat.value());
+        }
 
-    // commented out the old file paths that we used to do 
-    /*fs::path exePath = fs::absolute(fs::path(__argv[0]));
-    fs::path sharedDir = exePath.parent_path().parent_path().parent_path().parent_path() / "Shared";
-    std::string handFilePath = (sharedDir / "hands.dat").string();*/
+        player.Update();
+        desktopRenderer.update();
 
-    std::unique_ptr<H264Encoder> encoder;
-    auto lastFrameTime = std::chrono::high_resolution_clock::now();
-    const auto targetFrameTime = std::chrono::microseconds(1000000 / 300); // 300 FPS
-   
-        while (!WindowShouldClose()) {
-            auto currentTime = std::chrono::high_resolution_clock::now();
-            auto gyroOpt = gyroQueue.tryPop();
-            if (gyroOpt.has_value()) {
-                latestGyro = gyroOpt.value();
-                player.SetYawPitchRoll(latestGyro.yaw, latestGyro.pitch, latestGyro.roll);
-            }
-            auto handDat = handQueue.tryPop(); //wait for hand data and try pop 
-            std::vector<HandTrackingData> handData;
-            if (handDat.has_value()) {
-                handData.push_back(handDat.value());  
-            }
-
-            player.Update();
-            desktopRenderer.update();
-
-            BeginTextureMode(target);
-            ClearBackground(BLACK);
-
-            float gap = 30.0f;
-
-            // Left eye
+        BeginTextureMode(target);
+        ClearBackground(BLACK);
+        {
             rlViewport(0, 0, screenWidth / 2, screenHeight);
             BeginMode3D(player.GetLeftEyeCamera(eyeSeparation));
             DrawGrid(20, 1.0f);
@@ -301,63 +263,68 @@ int main(void) {
             desktopRenderer.renderDesktopPanels(player, player.GetLeftEyeCamera(eyeSeparation));
             EndMode3D();
 
-            // Right eye
-            rlViewport((screenWidth / 2) + (int)gap, 0, screenWidth / 2, screenHeight);
+            rlViewport(screenWidth / 2, 0, screenWidth / 2, screenHeight);
             BeginMode3D(player.GetRightEyeCamera(eyeSeparation));
             DrawGrid(20, 1.0f);
             player.DrawHands(handData);
             desktopRenderer.renderDesktopPanels(player, player.GetRightEyeCamera(eyeSeparation));
             EndMode3D();
+        }
+        EndTextureMode();
 
-            rlViewport(0, 0, screenWidth, screenHeight);
-            EndTextureMode();
-            BeginDrawing();
-            ClearBackground(BLACK);
-            DrawTexture(target.texture, 0, 0, WHITE);
-            EndDrawing();
+        BeginDrawing();
+        ClearBackground(BLACK);
+        DrawTexture(target.texture, 0, 0, WHITE);
+        EndDrawing();
 
-            // Frame Rate Control
-            auto elapsedTime = std::chrono::high_resolution_clock::now() - lastFrameTime;
-            if (elapsedTime >= targetFrameTime) {
-                lastFrameTime = currentTime;
-                //send raw frame to frame queue to encode on other thread 
-                Image frame = LoadImageFromTexture(target.texture);
-                ImageFlipVertical(&frame);
+        Image frameImg = LoadImageFromTexture(target.texture);
+        ImageFlipVertical(&frameImg);
 
-                RawFrame rf;
-                rf.width = frame.width;
-                rf.height = frame.height;
-                rf.pixels.resize(frame.width * frame.height * 4);
-                memcpy(rf.pixels.data(), frame.data, rf.pixels.size());
-                frameQueue.push(rf);
+        if (frameImg.data != nullptr) {
+            RawFrame rf;
+            rf.width = frameImg.width;
+            rf.height = frameImg.height;
 
-                UnloadImage(frame);
-            }
-            else {
-                // Sleep for remaining time to maintain frame rate
-                std::this_thread::sleep_for(targetFrameTime - elapsedTime); // caused issues with timing
+            size_t dataSize = GetPixelDataSize(frameImg.width, frameImg.height, frameImg.format);
+
+            if (dataSize > 0) {
+                rf.pixels.resize(dataSize);
+                memcpy(rf.pixels.data(), frameImg.data, dataSize);
+                frameQueue.push(std::move(rf));
             }
         }
-
-
-        desktopRenderer.cleanup();
-        UnloadRenderTexture(target);
-        running = false; // Signal the encoder thread to stop
-        CloseWindow();
-        debugLog << "[END] VR process terminated\n";
-        return 0;
+        UnloadImage(frameImg);
     }
 
+    debugLog << "[INFO] Main loop finished. Shutting down threads...\n";
+    running = false;
+    encoderThread.join();
+
+    desktopRenderer.cleanup();
+    UnloadRenderTexture(target);
+    CloseWindow();
+
+    debugLog << "[END] VR process terminated successfully.\n";
+    return 0;
+}
 
 bool isStdoutPiped() {
     return !_isatty(_fileno(stdout));
-	
 }
 
 uint32_t GetCurrentTimeMs() {
     using namespace std::chrono;
     return static_cast<uint32_t>(duration_cast<milliseconds>(high_resolution_clock::now().time_since_epoch()).count());
 }
+
+struct FrameHeader {
+    uint32_t magic = 0xDEADBEEF;
+    uint32_t timestamp_ms;
+    uint32_t frame_size;
+    uint32_t width;
+    uint32_t height;
+    uint32_t pixel_format;  // 2 = H264
+};
 
 bool SendH264Frame(const std::vector<uint8_t>& frameData, int width, int height) {
     try {
@@ -366,22 +333,14 @@ bool SendH264Frame(const std::vector<uint8_t>& frameData, int width, int height)
         header.frame_size = static_cast<uint32_t>(frameData.size());
         header.width = static_cast<uint32_t>(width);
         header.height = static_cast<uint32_t>(height);
-        header.pixel_format = 2;  // H264 format
+        header.pixel_format = 2;
 
-        // Write header
         std::cout.write(reinterpret_cast<const char*>(&header), sizeof(header));
-        if (!std::cout.good()) return false;
-
-        // Write frame data
         std::cout.write(reinterpret_cast<const char*>(frameData.data()), frameData.size());
-        if (!std::cout.good()) return false;
-
         std::cout.flush();
         return std::cout.good();
     }
-    catch (const std::exception& e) {
-        std::ofstream errorLog("frame_error.log", std::ios::app);
-        //errorLog << "Error sending H.264 frame: " << e.what() << std::endl;
+    catch (...) {
         return false;
     }
 }

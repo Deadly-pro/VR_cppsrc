@@ -8,25 +8,27 @@
 #include <vector>
 #include <memory>
 #include "screen_capture.h"
-
 struct MonitorInfo {
     HMONITOR hMonitor;
     RECT rcMonitor;
 };
 
+// Global monitor list
 std::vector<MonitorInfo> g_monitors;
 
+// Callback function for EnumDisplayMonitors
 BOOL CALLBACK MonitorEnumProc(HMONITOR hMonitor, HDC hdcMonitor, LPRECT lprcMonitor, LPARAM dwData)
 {
     g_monitors.push_back({ hMonitor, *lprcMonitor });
     return TRUE;
 }
 
+// Define static members
 std::vector<std::unique_ptr<std::thread>> ScreenCapture::captureThreads;
 std::atomic<bool> ScreenCapture::shouldStop{ false };
 std::atomic<bool> ScreenCapture::isRunning{ false };
 ThreadSafeQueue<CapturedFrame> ScreenCapture::frameQueue;
-std::atomic<float> ScreenCapture::captureRate{ 1.0f / 120.0f };
+std::atomic<float> ScreenCapture::captureRate{ 1.0f / 120.0f }; // Default to 120 FPS capture attempt
 
 void ScreenCapture::captureThreadFunction(size_t monitorIndex) {
     isRunning = true;
@@ -37,19 +39,19 @@ void ScreenCapture::captureThreadFunction(size_t monitorIndex) {
 
     HDC screenDC = GetDC(NULL);
     HDC memoryDC = CreateCompatibleDC(screenDC);
-
     HBITMAP bitmap = CreateCompatibleBitmap(screenDC, width, height);
     SelectObject(memoryDC, bitmap);
 
     BITMAPINFO bmi = {};
     bmi.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
     bmi.bmiHeader.biWidth = width;
-    bmi.bmiHeader.biHeight = -height;
+    bmi.bmiHeader.biHeight = -height; // Negative height for top-down bitmap
     bmi.bmiHeader.biPlanes = 1;
     bmi.bmiHeader.biBitCount = 32;
     bmi.bmiHeader.biCompression = BI_RGB;
 
     while (!shouldStop) {
+        // Capture the screen
         BitBlt(memoryDC, 0, 0, width, height, screenDC, rc.left, rc.top, SRCCOPY);
 
         CapturedFrame frame;
@@ -58,10 +60,12 @@ void ScreenCapture::captureThreadFunction(size_t monitorIndex) {
         frame.channels = 4;
         frame.pixels.resize(width * height * 4);
 
+        // Get the pixel data from the bitmap
         GetDIBits(screenDC, bitmap, 0, height, frame.pixels.data(), &bmi, DIB_RGB_COLORS);
 
+        // The bitmap data is BGRA, but Raylib expects RGBA. Swap R and B channels.
         for (size_t i = 0; i < frame.pixels.size(); i += 4) {
-            std::swap(frame.pixels[i], frame.pixels[i + 2]);
+            std::swap(frame.pixels[i], frame.pixels[i + 2]); // Swap B and R
         }
 
         frame.timestamp = std::chrono::steady_clock::now();
@@ -70,9 +74,11 @@ void ScreenCapture::captureThreadFunction(size_t monitorIndex) {
 
         frameQueue.push(std::move(frame));
 
+        // Wait to maintain the desired capture rate
         std::this_thread::sleep_for(std::chrono::milliseconds(static_cast<int>(captureRate.load() * 1000)));
     }
 
+    // Cleanup GDI objects
     DeleteObject(bitmap);
     DeleteDC(memoryDC);
     ReleaseDC(NULL, screenDC);
@@ -87,7 +93,9 @@ bool ScreenCapture::initialize() {
     EnumDisplayMonitors(NULL, NULL, MonitorEnumProc, 0);
 
     if (g_monitors.empty()) {
-        std::cout << "No monitors found." << std::endl;
+        // *** FIX: Write error messages to std::cerr, NOT std::cout ***
+        // This prevents text from corrupting the stdout video stream.
+        //std::cerr << "Error: No monitors found for screen capture." << std::endl;
         return false;
     }
 
@@ -118,6 +126,7 @@ void ScreenCapture::cleanup() {
     }
     captureThreads.clear();
 
+    // Clear any remaining frames in the queue
     while (!frameQueue.empty()) {
         frameQueue.tryPop();
     }
@@ -128,7 +137,9 @@ std::optional<CapturedFrame> ScreenCapture::getLatestFrame() {
 }
 
 void ScreenCapture::setCaptureRate(float fps) {
-    captureRate = 1.0f / fps;
+    if (fps > 0) {
+        captureRate = 1.0f / fps;
+    }
 }
 
 bool ScreenCapture::isInitialized() {
