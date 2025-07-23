@@ -27,6 +27,7 @@ void HandStdinReaderThread(ThreadSafeQueue<HandTrackingData>& queue) {
 
     while (std::getline(std::cin, line)) {
         if (line.empty()) continue;
+        log << "[INFO] Gyro data received: " << line << std::endl;
         try {
             auto j = json::parse(line);
             auto type = j.value("type", "");

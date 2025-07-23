@@ -28,16 +28,8 @@ void GyroStdinReaderThread(ThreadSafeQueue<GyroData>& queue) {
                     if (line.empty()) continue;
 
                     auto j = nlohmann::json::parse(line);
-                    float alpha = j.value("alpha", 0.0f);
-                    float beta = j.value("beta", 0.0f);
-                    float gamma = j.value("gamma", 0.0f);
-					if (beta > 0)beta = -180 + beta; //weird gyro logic that needed fix 
                     GyroData data;
-                    data.yaw = DEGRAD * alpha;
-                    data.pitch = DEGRAD * beta;
-                    data.roll = DEGRAD * gamma;
-                    
-                    queue.push(std::move(data));
+					log << "[INFO] Gyro data received: " << line << std::endl;
                     auto dattype = j.value("type", "");
                     auto payload = j.at("payload");
                     if (dattype == "Gyro") {
@@ -53,7 +45,7 @@ void GyroStdinReaderThread(ThreadSafeQueue<GyroData>& queue) {
                     }
                 }
                 catch (const std::exception& e) {
-                    log << "Gyro parse error: " << e.what() << std::endl;
+                    log << "Gyro parse error: " << e.what() << std::endl << "The stdin line data:" << line;
                 }
             }
             else {

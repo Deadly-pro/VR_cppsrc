@@ -19,6 +19,7 @@
 #include <stdexcept>
 #include "gyro_thread.h"
 #include "handat_thread.h"
+#include "stdin_reader_thread.h"
 extern "C" {
 #include <libavcodec/avcodec.h>
 #include <libavutil/imgutils.h>
@@ -253,11 +254,15 @@ int main(void) {
         }
         });
     encoderThread.detach();
-    std::thread gyroThread(GyroStdinReaderThread, std::ref(gyroQueue));
+    /*std::thread gyroThread(GyroStdinReaderThread, std::ref(gyroQueue));
     gyroThread.detach();
     debugLog << "[INFO] Started GyroStdinReaderThread\n";
     std::thread handThread(HandStdinReaderThread, std::ref(handQueue));
-    handThread.detach();
+    handThread.detach();*/
+
+	std::thread stdinThread(StdinReaderThread, std::ref(gyroQueue), std::ref(handQueue));
+	stdinThread.detach();
+
     // commented out the old file paths that we used to do 
     /*fs::path exePath = fs::absolute(fs::path(__argv[0]));
     fs::path sharedDir = exePath.parent_path().parent_path().parent_path().parent_path() / "Shared";
